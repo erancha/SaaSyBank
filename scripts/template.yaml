@@ -1,0 +1,357 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template for the SaasyBank application.
+
+Parameters:
+  ExistingVpcId:
+    Type: String
+    Description: 'ID of an existing VPC (leave empty to create a new one)'
+    Default: ''
+  ExistingRouteTableId:
+    Type: String
+    Description: 'ID of an existing route table'
+  # RDSSubnetIds:
+  #   Type: CommaDelimitedList
+  #   Description: Subnet IDs for the RDS instance (private subnets).
+  # K8sSubnetIds:
+  #   Type: CommaDelimitedList
+  #   Description: Subnet IDs for Kubernetes tasks (private subnets).
+
+  ExistingUserPoolId:
+    Type: String
+    Description: Existing Cognito User Pool ID.
+  ExistingIdentityPoolId:
+    Type: String
+    Description: Existing Cognito Identity Pool ID.
+
+Resources:
+  #==========================================================================================================================================================
+  # Application Load Balancer (ALB) with SSL
+  #==========================================================================================================================================================
+  MyTestLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-TestTargetLambda'
+      Handler: index.handler
+      Role: !GetAtt MyTestLambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+              //console.log({event});
+              return {
+                  statusCode: 200,
+                  statusDescription: "200 OK",
+                  isBase64Encoded: false,
+                  headers: {
+                      "Content-Type": "text/plain"
+                  },
+                  body: new Date().toISOString()
+              };
+          };
+      Runtime: nodejs20.x
+      MemorySize: 128
+      Timeout: 10
+
+  MyTestLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+
+  MyALBLambdaTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${AWS::StackName}-LambdaTG'
+      TargetType: lambda
+      Targets:
+        - Id: !GetAtt MyTestLambda.Arn
+      HealthCheckEnabled: true
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+
+  MyTestLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt MyTestLambda.Arn
+      Principal: 'elasticloadbalancing.amazonaws.com'
+      SourceArn: !Sub
+        - 'arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:targetgroup/${TargetGroupName}/*'
+        - TargetGroupName: !Sub '${AWS::StackName}-LambdaTG'
+
+  MyALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${AWS::StackName}-ALB'
+      Subnets:
+        - !Ref MyPublicSubnet1
+        - !Ref MyPublicSubnet2
+      SecurityGroups:
+        - !Ref MyALBSG
+      Scheme: internet-facing
+
+  MyALBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTPS access
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-MyALBSG'
+      VpcId: !Ref ExistingVpcId
+      SecurityGroupIngress:
+        # - IpProtocol: tcp
+        #   FromPort: 443 # TODO: Handle SSL before production!
+        #   ToPort: 443
+        #   CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  MyALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref MyALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MyALBLambdaTG
+
+  # MyALBCertificate: # TODO: Handle SSL before production!
+  #   Type: AWS::CertificateManager::Certificate
+  #   Properties:
+  #     DomainName: '!GetAtt MyALB.DNSName'
+  #     ValidationMethod: DNS
+  #     DomainValidationOptions:
+  #       - DomainName: !GetAtt MyALB.DNSName
+  #         ValidationDomain: !GetAtt MyALB.DNSName
+
+  # MyALBHTTPTG:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     Name: !Sub '${AWS::StackName}-HttpTG'
+  #     Port: 80
+  #     Protocol: HTTP
+  #     VpcId: !Ref ExistingVpcId
+  #     TargetType: ip
+
+  MyInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-IGW'
+
+  AttachInternetGatewayToVPC:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref ExistingVpcId
+      InternetGatewayId: !Ref MyInternetGateway
+
+  RouteRTBToIGW:
+    # The route defined with 0.0.0.0/0 allows outbound traffic from resources in the associated subnets to the public internet.
+    # Responses to outbound requests are allowed back to those resources, effectively making the interaction appear bidirectional, as long as the security groups (SG) and network ACLs do not block that traffic.
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref ExistingRouteTableId
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref MyInternetGateway
+
+  MyPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ExistingVpcId
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicSubnet1'
+
+  AttachMyPrivateSubnet1ToRTB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MyPublicSubnet1
+      RouteTableId: !Ref ExistingRouteTableId
+
+  MyPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ExistingVpcId
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicSubnet2'
+
+  AttachMyPrivateSubnet2ToRTB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MyPublicSubnet2
+      RouteTableId: !Ref ExistingRouteTableId
+
+  # #==========================================================================================================================================================
+  # # Kubernetes Tasks for Deposit, Withdraw, Transfer
+  # #==========================================================================================================================================================
+  # K8sDepositTask:
+  #   Type: AWS::EKS::FargateProfile
+  #   Properties:
+  #     ClusterName: !Ref EKSClusterName # Assume EKSClusterName is defined elsewhere
+  #     PodExecutionRoleArn: !GetAtt EKSFargateExecutionRole.Arn
+  #     Subnets: !Ref K8sSubnetIds
+  #     Selector:
+  #       - Namespace: 'default'
+  #       - Labels: # Add labels as needed
+
+  # # IAM Role for EKS Fargate Execution
+  # EKSFargateExecutionRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: eks-fargate-pod.amazonaws.com
+  #           Action: sts:AssumeRole
+  #     Policies:
+  #       - PolicyName: EKSFargatePodExecutionPolicy
+  #         PolicyDocument:
+  #           Version: '2012-10-17'
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - logs:CreateLogStream
+  #                 - logs:PutLogEvents
+  #                 - logs:CreateLogGroup
+  #                 - ecr:BatchGetImage
+  #                 - ecr:GetAuthorizationToken
+  #                 - ecr:BatchCheckLayerAvailability
+  #                 - ecr:GetRepositoryPolicy
+  #               Resource: '*'
+
+  # #==========================================================================================================================================================
+  # # Amazon RDS for Users and Accounts
+  # #==========================================================================================================================================================
+  # MyRDSDBInstance:
+  #   Type: AWS::RDS::DBInstance
+  #   Properties:
+  #     DBInstanceIdentifier: !Sub '${AWS::StackName}-RDS'
+  #     AllocatedStorage: '20'
+  #     DBInstanceClass: db.t3.micro
+  #     Engine: postgres
+  #     EngineVersion: '12.5'
+  #     MasterUsername: !Sub '${DBUsername}' # Placeholder for username, replace with parameter if needed
+  #     MasterUserPassword: !Sub '${DBPassword}' # Placeholder for password, replace with parameter if needed
+  #     DBSubnetGroupName: !Ref RDSSubnetGroup
+  #     VPCSecurityGroups:
+  #       - !Ref RDSSG
+  #     BackupRetentionPeriod: 7
+
+  # RDSSubnetGroup:
+  #   Type: AWS::RDS::DBSubnetGroup
+  #   Properties:
+  #     DBSubnetGroupDescription: Subnet group for SaasyBank RDS
+  #     SubnetIds:
+  # - !Ref MyPublicSubnet1
+  # - !Ref MyPublicSubnet2
+  #     DBSubnetGroupName: SaasyBankSubnetGroup
+
+  # RDSSG:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: RDS Security Group
+  # Tags:
+  #   - Key: Name
+  #     Value: !Sub '${AWS::StackName}-RDSSG'
+  #     VpcId: !Ref ExistingVpcId
+  #     SecurityGroupIngress:
+  #       - IpProtocol: tcp
+  #         FromPort: 5432
+  #         ToPort: 5432
+  #         SourceSecurityGroupId: !Ref MyALBSG
+
+  # CreateTablesFunction:
+  #   Type: AWS::Lambda::Function
+  #   Properties:
+  #     FunctionName: CreateRDSDatabaseTables
+  #     Handler: index.handler
+  #     Role: !GetAtt CreateTablesLambdaExecutionRole.Arn
+  #     Code:
+  #       ZipFile: |
+  #         import json
+  #         import psycopg2
+
+  #         def handler(event, context):
+  #             conn = psycopg2.connect(
+  #                 dbname='postgres',
+  #                 user='YOUR_MASTER_USERNAME',
+  #                 password='YOUR_MASTER_PASSWORD',
+  #                 host='YOUR_RDS_ENDPOINT',
+  #                 port='5432'
+  #             )
+  #             cur = conn.cursor()
+  #             # Create tables
+  #             cur.execute('''CREATE TABLE IF NOT EXISTS users (
+  #                             id SERIAL PRIMARY KEY,
+  #                             username VARCHAR(50) UNIQUE NOT NULL,
+  #                             password VARCHAR(200) NOT NULL
+  #                         );''')
+  #             cur.execute('''CREATE TABLE IF NOT EXISTS accounts (
+  #                             id SERIAL PRIMARY KEY,
+  #                             user_id INT NOT NULL,
+  #                             balance DECIMAL(10, 2) NOT NULL,
+  #                             FOREIGN KEY (user_id) REFERENCES users(id)
+  #                         );''')
+  #             conn.commit()
+  #             cur.close()
+  #             conn.close()
+  #             return {
+  #                 'statusCode': 200,
+  #                 'body': json.dumps('Tables created successfully!')
+  #             }
+  #     Runtime: python3.8
+  #     Timeout: 300
+  #     Environment:
+  #       DB_USERNAME: !Ref MasterUsername
+  #       DB_PASSWORD: !Ref MasterPassword
+  #       RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
+
+  # CreateTablesLambdaExecutionRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: lambda.amazonaws.com
+  #           Action: sts:AssumeRole
+  #     Policies:
+  #       - PolicyName: LambdaRDSAccessPolicy
+  #         PolicyDocument:
+  #           Version: '2012-10-17'
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - rds:DescribeDBInstances
+  #                 - rds:Connect
+  #               Resource: '*'
+Outputs:
+  LoadBalancerURL:
+    Description: 'LoadBalancer URL'
+    Value: !Sub 'http://${MyALB.DNSName}'
+# RDSInstanceEndpoint:
+#   Description: 'RDS Instance Endpoint'
+#   Value: !GetAtt MyRDSDBInstance.Endpoint.Address
