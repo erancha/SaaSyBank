@@ -2,10 +2,15 @@ $currentBranch = git rev-parse --abbrev-ref HEAD
 $isMainBranch = $currentBranch -eq 'main'
 
 if ($isMainBranch) {
-    Set-Variable -Name 'STACK_NAME' -Value 'sb' -Scope Global
+    $stackName = 'sb'
 }
 else {
-    Set-Variable -Name 'STACK_NAME' -Value 'sb-f1' -Scope Global
+    $stackName = 'sb-f1'
 }
 
-return $isMainBranch
+return @{
+    isMainBranch = $isMainBranch
+    stackName = $stackName
+    region = aws configure get region # "eu-central-1"
+ }
+ 

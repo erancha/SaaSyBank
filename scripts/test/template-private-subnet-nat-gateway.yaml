@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to set up ECS Fargate in a private subnet with NAT Gateway for ECR access.
+
+Parameters:
+  EcrImageUri:
+    Type: String
+    Description: Name of the banking service image in the ECR repository
+
+Resources:
+  MyVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: '10.0.0.0/16'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: MyVPC
+
+  MyPublicSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: '10.0.0.0/24'
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: MyPublicSubnet
+
+  MyPrivateSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: '10.0.1.0/24'
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MyPrivateSubnet
+
+  MyInternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+
+  MyVPCGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  MyNATGateway:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt MyEIP.AllocationId
+      SubnetId: !Ref MyPublicSubnet
+
+  MyEIP: # for MyNATGateway
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+
+  MyPrivateSubnetRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref MyVPC
+
+  MyPrivateSubnetRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref MyPrivateSubnetRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref MyNATGateway
+
+  MyPrivateSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref MyPrivateSubnet
+      RouteTableId: !Ref MyPrivateSubnetRouteTable
+
+  # Security Group for ECS Tasks
+  MySecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Allow outbound access for ECS Fargate'
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress: []
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+
+  MyECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: MyECSCluster
+
+  MyTaskExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'ecs-tasks.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: MyECSExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:BatchGetImage'
+                  - 's3:GetObject'
+                Resource: '*'
+
+  MyFargateTaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Family: MyTaskDefinition
+      NetworkMode: awsvpc
+      Memory: '512' # Ensure this is a string
+      Cpu: '256' # Ensure this is a string
+      RequiresCompatibilities:
+        - FARGATE
+      ContainerDefinitions:
+        - Name: MyContainer
+          Image: !Ref EcrImageUri
+          Essential: true
+      ExecutionRoleArn: !GetAtt MyTaskExecutionRole.Arn
+
+  MyECSFargateService:
+    Type: 'AWS::ECS::Service'
+    Properties:
+      Cluster: !Ref MyECSCluster
+      TaskDefinition: !Ref MyFargateTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref MyPrivateSubnet
+          SecurityGroups:
+            - !Ref MySecurityGroup
+          AssignPublicIp: DISABLED
+
+Outputs:
+  VPCId:
+    Description: 'VPC ID'
+    Value: !Ref MyVPC
+  PublicSubnetId:
+    Description: 'Public Subnet ID'
+    Value: !Ref MyPublicSubnet
+  PrivateSubnetId:
+    Description: 'Private Subnet ID'
+    Value: !Ref MyPrivateSubnet
+  ECSClusterName:
+    Description: 'ECS Cluster Name'
+    Value: !Ref MyECSCluster
+  FargateServiceName:
+    Description: 'Fargate Service Name'
+    Value: !Ref MyECSFargateService

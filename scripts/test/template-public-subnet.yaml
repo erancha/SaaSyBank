@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to set up ECS Fargate in a public subnet.
+
+Parameters:
+  EcrImageUri:
+    Type: String
+    Description: Name of the banking service image in the ECR repository
+
+Resources:
+  MyVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: '10.0.0.0/16'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: MyVPC
+
+  MyPublicSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: '10.0.1.0/24'
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: MyPublicSubnet
+
+  MyInternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties: {}
+
+  MyInternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  MyRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref MyVPC
+
+  MyPublicRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: MyInternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref MyRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MyInternetGateway
+
+  MyPublicSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref MyPublicSubnet
+      RouteTableId: !Ref MyRouteTable
+
+  # Security Group for ECS Tasks
+  MySecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Allow outbound access for ECS Fargate'
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress: []
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+
+  MyECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: MyECSCluster
+
+  MyTaskExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'ecs-tasks.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: MyECSExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:BatchGetImage'
+                  - 's3:GetObject'
+                Resource: '*'
+
+  MyFargateTaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Family: MyTaskDefinition
+      NetworkMode: awsvpc
+      Memory: '512' # Ensure this is a string
+      Cpu: '256' # Ensure this is a string
+      RequiresCompatibilities:
+        - FARGATE
+      ContainerDefinitions:
+        - Name: MyContainer
+          Image: !Ref EcrImageUri
+          Essential: true
+      ExecutionRoleArn: !GetAtt MyTaskExecutionRole.Arn
+
+  MyECSFargateService:
+    Type: 'AWS::ECS::Service'
+    Properties:
+      Cluster: !Ref MyECSCluster
+      TaskDefinition: !Ref MyFargateTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref MyPublicSubnet
+          SecurityGroups:
+            - !Ref MySecurityGroup
+          AssignPublicIp: ENABLED
+
+Outputs:
+  VPCId:
+    Description: 'VPC ID'
+    Value: !Ref MyVPC
+  PublicSubnetId:
+    Description: 'Public Subnet ID'
+    Value: !Ref MyPublicSubnet
+  ECSClusterName:
+    Description: 'ECS Cluster Name'
+    Value: !Ref MyECSCluster
+  FargateServiceName:
+    Description: 'Fargate Service Name'
+    Value: !Ref MyECSFargateService

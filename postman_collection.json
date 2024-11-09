@@ -1,0 +1,132 @@
+{
+	"info": {
+		"_postman_id": "a13a0370-15ce-4ab5-be44-c3451e04712f",
+		"name": "Banking API",
+		"description": "API for banking operations",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "9394726"
+	},
+	"item": [
+		{
+			"name": "time",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/time",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"time"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/health",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"health"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Deposit",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"amount\": 1000, \"accountId\": \"12345\", \"tenantId\": \"tenant1\"}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/deposit",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"deposit"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Withdraw",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"amount\": 500, \"accountId\": \"12345\", \"tenantId\": \"tenant1\"}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/withdraw",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"withdraw"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Transfer",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"amount\": 200, \"fromAccountId\": \"12345\", \"toAccountId\": \"67890\", \"tenantId\": \"tenant1\"}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/transfer",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"transfer"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

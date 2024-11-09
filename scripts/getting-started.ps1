@@ -9,4 +9,4 @@ aws --version
 # $env:PATH = "C:\Program Files\Amazon\AWSSAMCLI\bin;" + $env:PATH
 sam --version
 
-# .\build-dev.ps1
+# ./build-dev.ps1

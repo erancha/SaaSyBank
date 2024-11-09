@@ -1,32 +1,323 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: CloudFormation template for the SaasyBank application.
+Description: SaasyBank application.
 
 Parameters:
   ExistingVpcId:
     Type: String
     Description: 'ID of an existing VPC (leave empty to create a new one)'
-    Default: ''
+    Default: 'vpc-08016eb77e7ac9962'
   ExistingRouteTableId:
     Type: String
-    Description: 'ID of an existing route table'
-  # RDSSubnetIds:
-  #   Type: CommaDelimitedList
-  #   Description: Subnet IDs for the RDS instance (private subnets).
-  # K8sSubnetIds:
-  #   Type: CommaDelimitedList
-  #   Description: Subnet IDs for Kubernetes tasks (private subnets).
+    Description: 'ID of an existing route table (leave empty to create a new one)'
+    Default: ''
+  # ExistingUserPoolId:
+  #   Type: String
+  #   Description: Existing Cognito User Pool ID.
+  # ExistingIdentityPoolId:
+  #   Type: String
+  #   Description: Existing Cognito Identity Pool ID.
 
-  ExistingUserPoolId:
+  LogGroupName:
     Type: String
-    Description: Existing Cognito User Pool ID.
-  ExistingIdentityPoolId:
+    Description: 'Log group name for all ECS services'
+    Default: '/ecs/'
+
+  BankingServiceName:
     Type: String
-    Description: Existing Cognito Identity Pool ID.
+    Default: banking-service
+    Description: Name of the banking service
+  BankingEcrImageUri:
+    Type: String
+    Description: Name of the banking service image in the ECR repository
+
+  ECSContainerPort:
+    Type: Number
+    Default: 8080
+    Description: Port number the container exposes
+
+  ECSContainerCpu:
+    Type: Number
+    Default: 256
+    Description: CPU units for the container (256 = 0.25 vCPU)
+  ECSContainerMemory:
+    Type: Number
+    Default: 512
+    Description: Memory in MB for the container
+  ECSDesiredCount:
+    Type: Number
+    Default: 2
+    Description: The number of instantiations of the specified task definition to place and keep running in your service.
+
+Conditions:
+  CreateRouteTable: !Equals [!Ref ExistingRouteTableId, '']
 
 Resources:
   #==========================================================================================================================================================
-  # Application Load Balancer (ALB) with SSL
+  # Networking resources (WIP):
+  #  - 2 public subnets for an ALB, allowing inbound traffic only on port 80 (initially), from any ip, and outbound traffic only to the ECS' SG.
+  #  - 2 private subnets for ECS, allowing inbound traffic only from the ALB's SG, and outbound traffic only to the ECR's and RDS's SGs.
+  #  - 2 private subnets for RDS, allowing inbound traffic only from the ECS's SG, and outbound traffic only to the RDS service.
+  #  - ECS' tasks require private access to retrieve images from ECR thru three vpc endpoints: two to ECR (interface) and one to S3 (gateway).
   #==========================================================================================================================================================
+  # Traffic Flow Overview
+  #   Client to ALB: The client sends a request to the ALB on port 80.
+  #   ALB forwards requests to the ECS service's target group on port 80.
+  #   Target Group to ECS Container: The target group forwards the request to the ECS container, which listens on a specific port.
+  #   ECS service receives traffic on the port specified in ContainerPort (e.g., 8080).
+  #   The security group for ECS (MyECSServicesSG) must allow traffic on the port your container is listening to (e.g., 8080).
+  #==========================================================================================================================================================
+
+  # Public (ALB)
+  #-------------
+  MyInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-IGW'
+
+  AttachMyIGWToMyVPC:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref ExistingVpcId
+      InternetGatewayId: !Ref MyInternetGateway
+
+  MyRouteTable:
+    Type: AWS::EC2::RouteTable
+    Condition: CreateRouteTable
+    Properties:
+      VpcId: !Ref ExistingVpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-RTB'
+
+  RouteMyRTBToMyIGW:
+    # The route defined with 0.0.0.0/0 allows outbound traffic from resources in the associated subnets to the public internet.
+    # Responses to outbound requests are allowed back to those resources, effectively making the interaction appear bidirectional, as long as the security groups (SG) and network ACLs do not block that traffic.
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref MyInternetGateway
+
+  MyPublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ExistingVpcId
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicSubnet1'
+  MyPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ExistingVpcId
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicSubnet2'
+
+  AssociateMyPublicSubnet1ToMyRTB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MyPublicSubnet1
+      RouteTableId: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+  AssociateMyPublicSubnet2ToMyRTB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MyPublicSubnet2
+      RouteTableId: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+
+  MyALBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Allow HTTP access. TODO: Handle SSL before production!'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-MyALBSG'
+      VpcId: !Ref ExistingVpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80 # 443 TODO: Handle SSL before production!
+          ToPort: 80 # 443 TODO: Handle SSL before production!
+          CidrIp: 0.0.0.0/0
+
+  # ECS, ECR
+  #-------------
+  # MyECSPrivateSubnet1:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     VpcId: !Ref ExistingVpcId
+  #     CidrBlock: 10.0.5.0/24
+  #     AvailabilityZone: !Select [0, !GetAZs '']
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub '${AWS::StackName}-MyECSPrivateSubnet1'
+  # MyECSPrivateSubnet2:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     VpcId: !Ref ExistingVpcId
+  #     CidrBlock: 10.0.6.0/24
+  #     AvailabilityZone: !Select [1, !GetAZs '']
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub '${AWS::StackName}-MyECSPrivateSubnet2'
+
+  # ECR and S3 VPC Endpoints - Needed to pull container images
+  # ECRApiEndpoint:
+  #   Type: AWS::EC2::VPCEndpoint
+  #   Properties:
+  #     VpcId: !Ref ExistingVpcId
+  #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.api'
+  #     VpcEndpointType: Interface
+  #     PrivateDnsEnabled: true
+  #     SubnetIds:
+  #       - !Ref MyECSPrivateSubnet1
+  #       - !Ref MyECSPrivateSubnet2
+  #     SecurityGroupIds:
+  #       - !Ref MyECRVPCEndpointsSG
+  # ECRDkrEndpoint:
+  #   Type: AWS::EC2::VPCEndpoint
+  #   Properties:
+  #     VpcId: !Ref ExistingVpcId
+  #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.dkr'
+  #     VpcEndpointType: Interface
+  #     PrivateDnsEnabled: true
+  #     SubnetIds:
+  #       - !Ref MyECSPrivateSubnet1
+  #       - !Ref MyECSPrivateSubnet2
+  #     SecurityGroupIds:
+  #       - !Ref MyECRVPCEndpointsSG
+  # S3Endpoint:
+  #   Type: AWS::EC2::VPCEndpoint
+  #   Condition: CreateRouteTable
+  #   Properties:
+  #     VpcId: !Ref ExistingVpcId
+  #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+  #     VpcEndpointType: Gateway
+  #     RouteTableIds:
+  #       - !Ref MyRouteTable
+
+  # AssociateMyECSPrivateSubnet1ToMyRTB: # to access the vpc endpoints above (maybe only the S3 gateway endpoint?)
+  #   Type: AWS::EC2::SubnetRouteTableAssociation
+  #   Properties:
+  #     SubnetId: !Ref MyECSPrivateSubnet1
+  #     RouteTableId: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+  # AssociateMyECSPrivateSubnet2ToMyRTB: # to access the vpc endpoints above (maybe only the S3 gateway endpoint?)
+  #   Type: AWS::EC2::SubnetRouteTableAssociation
+  #   Properties:
+  #     SubnetId: !Ref MyECSPrivateSubnet2
+  #     RouteTableId: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+
+  # MyECRVPCEndpointsSG: # Security Group for VPC Endpoints
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: Security group for VPC Endpoints
+  #     VpcId: !Ref ExistingVpcId
+  #     SecurityGroupIngress:
+  #       - IpProtocol: tcp
+  #         FromPort: 443
+  #         ToPort: 443
+  #         SourceSecurityGroupId: !Ref MyECSServicesSG
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub '${AWS::StackName}-VPCEndpoint-SG'
+
+  MyECSServicesSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ECS service
+      VpcId: !Ref ExistingVpcId
+      SecurityGroupIngress:
+        - IpProtocol: 'tcp'
+          FromPort: !Ref ECSContainerPort # Port your container listens on, e.g., 8080
+          ToPort: !Ref ECSContainerPort # Port your container listens on, e.g., 8080
+          SourceSecurityGroupId: !Ref MyALBSG
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ECS-SG'
+  MyECSServicesEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ECS to Allow Traffic to ECR
+    Properties:
+      GroupId: !Ref MyECSServicesSG
+      IpProtocol: 'tcp'
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0 # TODO (for private subnets): DestinationSecurityGroupId: !Ref MyECRVPCEndpointsSG
+  MyALBEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ALB to Allow Traffic to ECS Services.
+    Properties:
+      GroupId: !Ref MyALBSG
+      IpProtocol: tcp
+      FromPort: !Ref ECSContainerPort
+      ToPort: !Ref ECSContainerPort
+      DestinationSecurityGroupId: !Ref MyECSServicesSG
+
+  # RDS
+  #-------------
+  # MyRDSPrivateSubnet1:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     VpcId: !Ref ExistingVpcId
+  #     CidrBlock: 10.0.7.0/24
+  #     AvailabilityZone: !Select [0, !GetAZs '']
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub '${AWS::StackName}-MyRDSPrivateSubnet1'
+  # MyRDSPrivateSubnet2:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     VpcId: !Ref ExistingVpcId
+  #     CidrBlock: 10.0.8.0/24
+  #     AvailabilityZone: !Select [1, !GetAZs '']
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub '${AWS::StackName}-MyRDSPrivateSubnet2'
+
+  # MyRDSSG:
+  #   Type: AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: RDS Security Group
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub '${AWS::StackName}-MyRDSSG'
+  #     VpcId: !Ref ExistingVpcId
+  #     SecurityGroupIngress:
+  #       - IpProtocol: tcp
+  #         FromPort: 5432
+  #         ToPort: 5432
+  #         SourceSecurityGroupId: !Ref MyECSServicesSG
+  # MyECSEgressRule:
+  #   Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ECS to Allow Traffic to RDS
+  #   Properties:
+  #     GroupId: !Ref MyECSServicesSG
+  #     IpProtocol: tcp
+  #     FromPort: 5432
+  #     ToPort: 5432
+  #     DestinationSecurityGroupId: !Ref MyRDSSG
+
+  #==========================================================================================================================================================
+  # Application Load Balancer (ALB)
+  #==========================================================================================================================================================
+  BankingALBTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${AWS::StackName}-BankingTG'
+      Port: 80 # hardcoded - the Target group forwards to ECS on port 80
+      Protocol: HTTP
+      VpcId: !Ref ExistingVpcId
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckPath: /api/banking/health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+
   MyTestLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -36,7 +327,6 @@ Resources:
       Code:
         ZipFile: |
           exports.handler = async (event) => {
-              //console.log({event});
               return {
                   statusCode: 200,
                   statusDescription: "200 OK",
@@ -51,6 +341,19 @@ Resources:
       MemorySize: 128
       Timeout: 10
 
+  MyLambdaALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref MyTestLambdaTG
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /api/time
+      ListenerArn: !Ref MyALBListener
+      Priority: 2
+
   MyTestLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -64,19 +367,14 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
 
-  MyALBLambdaTG:
+  MyTestLambdaTG:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: !Sub '${AWS::StackName}-LambdaTG'
       TargetType: lambda
       Targets:
         - Id: !GetAtt MyTestLambda.Arn
-      HealthCheckEnabled: true
-      HealthCheckPath: /
-      HealthCheckIntervalSeconds: 30
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 2
+      HealthCheckEnabled: false
 
   MyTestLambdaInvokePermission:
     Type: AWS::Lambda::Permission
@@ -99,33 +397,18 @@ Resources:
         - !Ref MyALBSG
       Scheme: internet-facing
 
-  MyALBSG:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Allow HTTPS access
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-MyALBSG'
-      VpcId: !Ref ExistingVpcId
-      SecurityGroupIngress:
-        # - IpProtocol: tcp
-        #   FromPort: 443 # TODO: Handle SSL before production!
-        #   ToPort: 443
-        #   CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-
   MyALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       LoadBalancerArn: !Ref MyALB
-      Port: 80
+      Port: 80 # hardcoded
       Protocol: HTTP
       DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref MyALBLambdaTG
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: '404'
+            MessageBody: 'Not Found'
+            ContentType: text/plain
 
   # MyALBCertificate: # TODO: Handle SSL before production!
   #   Type: AWS::CertificateManager::Certificate
@@ -136,114 +419,123 @@ Resources:
   #       - DomainName: !GetAtt MyALB.DNSName
   #         ValidationDomain: !GetAtt MyALB.DNSName
 
-  # MyALBHTTPTG:
-  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
-  #   Properties:
-  #     Name: !Sub '${AWS::StackName}-HttpTG'
-  #     Port: 80
-  #     Protocol: HTTP
-  #     VpcId: !Ref ExistingVpcId
-  #     TargetType: ip
-
-  MyInternetGateway:
-    Type: AWS::EC2::InternetGateway
+  #==========================================================================================================================================================
+  # ECS with Fargate launch type for the following functionality: Deposit, Withdraw, Transfer money.
+  #==========================================================================================================================================================
+  MyECSCluster:
+    Type: AWS::ECS::Cluster
     Properties:
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-IGW'
+      ClusterName: !Sub '${AWS::StackName}-Cluster'
 
-  AttachInternetGatewayToVPC:
-    Type: AWS::EC2::VPCGatewayAttachment
+  MyECSExecutionRole:
+    Type: AWS::IAM::Role
     Properties:
-      VpcId: !Ref ExistingVpcId
-      InternetGatewayId: !Ref MyInternetGateway
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        # - arn:aws:iam::aws:policy/AWSAppRunnerServicePolicyForECRAccess
 
-  RouteRTBToIGW:
-    # The route defined with 0.0.0.0/0 allows outbound traffic from resources in the associated subnets to the public internet.
-    # Responses to outbound requests are allowed back to those resources, effectively making the interaction appear bidirectional, as long as the security groups (SG) and network ACLs do not block that traffic.
-    Type: AWS::EC2::Route
+  MyECSTaskRole:
+    Type: AWS::IAM::Role
     Properties:
-      RouteTableId: !Ref ExistingRouteTableId
-      DestinationCidrBlock: '0.0.0.0/0'
-      GatewayId: !Ref MyInternetGateway
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
 
-  MyPublicSubnet1:
-    Type: AWS::EC2::Subnet
+  # Banking service
+  #----------------
+  BankingECSLogGroup:
+    Type: AWS::Logs::LogGroup
     Properties:
-      VpcId: !Ref ExistingVpcId
-      CidrBlock: 10.0.3.0/24
-      AvailabilityZone: !Select [0, !GetAZs '']
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-PublicSubnet1'
+      LogGroupName: !Ref LogGroupName
+      RetentionInDays: 3
 
-  AttachMyPrivateSubnet1ToRTB:
-    Type: AWS::EC2::SubnetRouteTableAssociation
+  BankingALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
-      SubnetId: !Ref MyPublicSubnet1
-      RouteTableId: !Ref ExistingRouteTableId
+      ListenerArn: !Ref MyALBListener
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /api/banking/*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BankingALBTG
+      Priority: 1
 
-  MyPublicSubnet2:
-    Type: AWS::EC2::Subnet
+  BankingECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
     Properties:
-      VpcId: !Ref ExistingVpcId
-      CidrBlock: 10.0.4.0/24
-      AvailabilityZone: !Select [1, !GetAZs '']
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-PublicSubnet2'
+      Family: !Sub '${AWS::StackName}-banking-task'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref ECSContainerCpu
+      Memory: !Ref ECSContainerMemory
+      ExecutionRoleArn: !GetAtt MyECSExecutionRole.Arn
+      TaskRoleArn: !GetAtt MyECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: 'banking-task'
+          Image: !Ref BankingEcrImageUri
+          PortMappings:
+            - ContainerPort: !Ref ECSContainerPort # The port the app listens on
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupName
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: !Ref AWS::StackName
+          Environment:
+            - Name: PORT
+              Value: !Ref ECSContainerPort
 
-  AttachMyPrivateSubnet2ToRTB:
-    Type: AWS::EC2::SubnetRouteTableAssociation
+  BankingECSService:
+    Type: AWS::ECS::Service
+    DependsOn: BankingALBListenerRule # This ensures the target group is associated with ALB via the listener rule
     Properties:
-      SubnetId: !Ref MyPublicSubnet2
-      RouteTableId: !Ref ExistingRouteTableId
+      ServiceName: !Sub '${AWS::StackName}-${BankingServiceName}'
+      Cluster: !Ref MyECSCluster
+      TaskDefinition: !Ref BankingECSTaskDefinition
+      DesiredCount: !Ref ECSDesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref MyECSServicesSG
+          Subnets:
+            - !Ref MyPublicSubnet1
+            # - !Ref MyECSPrivateSubnet1 # TODO
+            # - !Ref MyECSPrivateSubnet2 # TODO
+          AssignPublicIp: ENABLED
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      EnableExecuteCommand: true
+      LoadBalancers:
+        - ContainerName: 'banking-task'
+          ContainerPort: !Ref ECSContainerPort
+          TargetGroupArn: !Ref BankingALBTG # the target group that the ALB will use to route traffic to the container instances
 
-  # #==========================================================================================================================================================
-  # # Kubernetes Tasks for Deposit, Withdraw, Transfer
-  # #==========================================================================================================================================================
-  # K8sDepositTask:
-  #   Type: AWS::EKS::FargateProfile
-  #   Properties:
-  #     ClusterName: !Ref EKSClusterName # Assume EKSClusterName is defined elsewhere
-  #     PodExecutionRoleArn: !GetAtt EKSFargateExecutionRole.Arn
-  #     Subnets: !Ref K8sSubnetIds
-  #     Selector:
-  #       - Namespace: 'default'
-  #       - Labels: # Add labels as needed
+  #==========================================================================================================================================================
+  # TODO: EKS (Kubernetes) with Fargate launch type for the same functionality (Deposit, Withdraw, Transfer).
+  #==========================================================================================================================================================
 
-  # # IAM Role for EKS Fargate Execution
-  # EKSFargateExecutionRole:
-  #   Type: AWS::IAM::Role
-  #   Properties:
-  #     AssumeRolePolicyDocument:
-  #       Version: '2012-10-17'
-  #       Statement:
-  #         - Effect: Allow
-  #           Principal:
-  #             Service: eks-fargate-pod.amazonaws.com
-  #           Action: sts:AssumeRole
-  #     Policies:
-  #       - PolicyName: EKSFargatePodExecutionPolicy
-  #         PolicyDocument:
-  #           Version: '2012-10-17'
-  #           Statement:
-  #             - Effect: Allow
-  #               Action:
-  #                 - logs:CreateLogStream
-  #                 - logs:PutLogEvents
-  #                 - logs:CreateLogGroup
-  #                 - ecr:BatchGetImage
-  #                 - ecr:GetAuthorizationToken
-  #                 - ecr:BatchCheckLayerAvailability
-  #                 - ecr:GetRepositoryPolicy
-  #               Resource: '*'
-
-  # #==========================================================================================================================================================
-  # # Amazon RDS for Users and Accounts
-  # #==========================================================================================================================================================
+  #==========================================================================================================================================================
+  # Amazon RDS for Users and Accounts
+  #==========================================================================================================================================================
   # MyRDSDBInstance:
   #   Type: AWS::RDS::DBInstance
   #   Properties:
@@ -256,7 +548,7 @@ Resources:
   #     MasterUserPassword: !Sub '${DBPassword}' # Placeholder for password, replace with parameter if needed
   #     DBSubnetGroupName: !Ref RDSSubnetGroup
   #     VPCSecurityGroups:
-  #       - !Ref RDSSG
+  #       - !Ref MyRDSSG
   #     BackupRetentionPeriod: 7
 
   # RDSSubnetGroup:
@@ -264,23 +556,9 @@ Resources:
   #   Properties:
   #     DBSubnetGroupDescription: Subnet group for SaasyBank RDS
   #     SubnetIds:
-  # - !Ref MyPublicSubnet1
-  # - !Ref MyPublicSubnet2
+  #       - !Ref MyRDSPrivateSubnet1
+  #       - !Ref MyRDSPrivateSubnet2
   #     DBSubnetGroupName: SaasyBankSubnetGroup
-
-  # RDSSG:
-  #   Type: AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupDescription: RDS Security Group
-  # Tags:
-  #   - Key: Name
-  #     Value: !Sub '${AWS::StackName}-RDSSG'
-  #     VpcId: !Ref ExistingVpcId
-  #     SecurityGroupIngress:
-  #       - IpProtocol: tcp
-  #         FromPort: 5432
-  #         ToPort: 5432
-  #         SourceSecurityGroupId: !Ref MyALBSG
 
   # CreateTablesFunction:
   #   Type: AWS::Lambda::Function
@@ -348,10 +626,47 @@ Resources:
   #                 - rds:DescribeDBInstances
   #                 - rds:Connect
   #               Resource: '*'
+
+  #==========================================================================================================================================================
+  # Optimizations (TODO?) - async invocations + websocket responses
+  #==========================================================================================================================================================
+
 Outputs:
+  MyRouteTableId:
+    Description: 'The ID of the route table associated with the VPC for this application '
+    Value: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+
+  PublicSubnet1Id:
+    Description: 'ID of the first public subnet'
+    Value: !Ref MyPublicSubnet1
+
+  PublicSubnet2Id:
+    Description: 'ID of the second public subnet'
+    Value: !Ref MyPublicSubnet2
+
+  ALBSecurityGroupId:
+    Description: 'ID of the ALB Security Group'
+    Value: !Ref MyALBSG
+
+  ECSSecurityGroupId:
+    Description: 'ID of the ECS Security Group'
+    Value: !Ref MyECSServicesSG
+
+  ECSExecutionRoleArn:
+    Description: 'ARN of the ECS Execution Role'
+    Value: !GetAtt MyECSExecutionRole.Arn
+
+  ECSTaskRoleArn:
+    Description: 'ARN of the ECS Task Role'
+    Value: !GetAtt MyECSTaskRole.Arn
+
   LoadBalancerURL:
     Description: 'LoadBalancer URL'
     Value: !Sub 'http://${MyALB.DNSName}'
+
+  ECSServiceName:
+    Description: 'Name of the ECS service'
+    Value: !Ref BankingECSService
 # RDSInstanceEndpoint:
 #   Description: 'RDS Instance Endpoint'
 #   Value: !GetAtt MyRDSDBInstance.Endpoint.Address
