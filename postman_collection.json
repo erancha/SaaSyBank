@@ -1,6 +1,6 @@
 {
 	"info": {
-		"_postman_id": "a13a0370-15ce-4ab5-be44-c3451e04712f",
+		"_postman_id": "2e94b031-c7cb-4a19-bd8e-0f7f64fb6394",
 		"name": "Banking API",
 		"description": "API for banking operations",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
@@ -20,6 +20,24 @@
 					"path": [
 						"api",
 						"time"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "tables",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/tables",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"tables"
 					]
 				}
 			},

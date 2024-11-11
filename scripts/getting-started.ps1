@@ -9,4 +9,12 @@ aws --version
 # $env:PATH = "C:\Program Files\Amazon\AWSSAMCLI\bin;" + $env:PATH
 sam --version
 
-# ./build-dev.ps1
+
+# Create a secret: AWS Secrets Manager > Secrets > Store a new secret:
+#     Secret type = Other type of secret
+#     Two Key/value pairs: username = <your username>, password = <your password>
+#     Secret name = /sb/rdscredentials
+# Replace your Secret ARN instead of 'arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ' in template.yaml.
+
+
+# ./dev-build-deploy.ps1

@@ -10,11 +10,25 @@ $commonConstants = ./common-constants.ps1
 Set-Variable -Name 'TEMPLATE_FILE' -Value './template.yaml' -Option Constant 
 
 Write-Output "`n$(Get-Date -Format 'HH:mm:ss') Validating the cloudformation template .."
-sam validate --template-file $TEMPLATE_FILE --lint  #| ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() }
+sam validate --template-file $TEMPLATE_FILE --lint # | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() }
 if ($LASTEXITCODE -eq 0) {
     Write-Output "`n$(Get-Date -Format 'HH:mm:ss') Starting a build, stack '$($commonConstants.stackName)' .."
 
-    sam build --template-file $TEMPLATE_FILE > $null
+    Write-Output "`n$(Get-Date -Format 'HH:mm:ss') Preparing lambda layers .."
+
+    $projectFolder = (Get-Location).Path + "/.."
+
+    Write-Host "Skipping pg !" -ForegroundColor Yellow -BackgroundColor DarkGreen
+
+    # Set-Location "${projectFolder}/backend/layers/pg/nodejs/"
+    # npm install
+    # Set-Location ..
+    # Compress-Archive -Update -Path * -DestinationPath ../pg-layer.zip
+
+    Set-Location "${projectFolder}/scripts/"
+
+    Write-Output "`n$(Get-Date -Format 'HH:mm:ss') sam build --template-file $TEMPLATE_FILE ..`n"
+    sam build --template-file $TEMPLATE_FILE # > $null
     if ($LASTEXITCODE -eq 0) {
         $ecrBankingRepositoryName = "banking-repository"
         $bankingServiceName = "banking-service"
@@ -29,6 +43,9 @@ if ($LASTEXITCODE -eq 0) {
         Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Build completed. Deploying .."
 
         # Build the parameter overrides string dynamically
+        if ($commonConstants.isMainBranch -ne $true) {
+            $allowRDSPublicAccess = 'true'
+        }
         $parameterOverrides = @(
             # "ExistingNotesEncryptionKeyId='d0efc261-b71d-4f5c-9686-9876cc664243'",
             # "ExistingUserPoolId='eu-central-1_OHq1aZYju'",
@@ -37,14 +54,15 @@ if ($LASTEXITCODE -eq 0) {
             "ExistingVpcId='vpc-08016eb77e7ac9962'",
             # "ExistingRouteTableId='rtb-!!!!!!!!!!!!!!'",
             "BankingServiceName='$bankingServiceName'",
-            "BankingEcrImageUri='$($bankingDockerResults.ecrImageUri)'"
+            "BankingEcrImageUri='$($bankingDockerResults.ecrImageUri)'",
+            "AllowRDSPublicAccess='$allowRDSPublicAccess'"
         )
 
         if ($commonConstants.isMainBranch) {
             $parameterOverrides += "StageName='prod'"
         }
         else {
-            # In feature branch, reuse the follwing resources in the main branch:
+            # In feature branch, reuse the follwing resources from the main branch's stack:
         }
 
         # Join the parameter overrides into a single string
@@ -54,6 +72,7 @@ if ($LASTEXITCODE -eq 0) {
         sam deploy --region $commonConstants.region --template-file $TEMPLATE_FILE --stack-name $commonConstants.stackName `
             --capabilities CAPABILITY_IAM `
             --fail-on-empty-changeset false `
+            --resolve-s3 `
             --parameter-overrides $parameterOverridesString
         $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
         if (($LASTEXITCODE -ne 0) -and ($LASTEXITCODE -ne 1)) {

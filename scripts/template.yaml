@@ -1,4 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
 Description: SaasyBank application.
 
 Parameters:
@@ -48,8 +49,17 @@ Parameters:
     Default: 2
     Description: The number of instantiations of the specified task definition to place and keep running in your service.
 
+  AllowRDSPublicAccess:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false', '']
+    Description: "Set to 'true' to allow public access to the RDS instance (recommended only for development)."
+
 Conditions:
   CreateRouteTable: !Equals [!Ref ExistingRouteTableId, '']
+  AllowRDSPublicAccessCondition: !Equals
+    - !Ref AllowRDSPublicAccess
+    - 'true'
 
 Resources:
   #==========================================================================================================================================================
@@ -146,8 +156,8 @@ Resources:
           ToPort: 80 # 443 TODO: Handle SSL before production!
           CidrIp: 0.0.0.0/0
 
-  # ECS, ECR
-  #-------------
+  # ECS, ECR - private subnets
+  #---------------------------
   # MyECSPrivateSubnet1:
   #   Type: AWS::EC2::Subnet
   #   Properties:
@@ -278,52 +288,67 @@ Resources:
   #       - Key: Name
   #         Value: !Sub '${AWS::StackName}-MyRDSPrivateSubnet2'
 
-  # MyRDSSG:
-  #   Type: AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupDescription: RDS Security Group
-  #     Tags:
-  #       - Key: Name
-  #         Value: !Sub '${AWS::StackName}-MyRDSSG'
-  #     VpcId: !Ref ExistingVpcId
-  #     SecurityGroupIngress:
-  #       - IpProtocol: tcp
-  #         FromPort: 5432
-  #         ToPort: 5432
-  #         SourceSecurityGroupId: !Ref MyECSServicesSG
-  # MyECSEgressRule:
-  #   Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ECS to Allow Traffic to RDS
-  #   Properties:
-  #     GroupId: !Ref MyECSServicesSG
-  #     IpProtocol: tcp
-  #     FromPort: 5432
-  #     ToPort: 5432
-  #     DestinationSecurityGroupId: !Ref MyRDSSG
+  MyRDSSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS Security Group
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-MyRDSSG'
+      VpcId: !Ref ExistingVpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref MyECSServicesSG
+        # - IpProtocol: tcp
+        #   FromPort: 5432
+        #   ToPort: 5432
+        #   CidrIp: 149.106.249.221/32 # TODO: For testing purpose !
+
+  MyECSEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ECS to Allow Traffic to RDS
+    Properties:
+      GroupId: !Ref MyECSServicesSG
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      DestinationSecurityGroupId: !Ref MyRDSSG
+
+  # ------------------------------------------------------------------------------
+  # Lambda layers.
+  # ------------------------------------------------------------------------------
+  pgLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: ../backend/layers/pg-layer.zip
+      CompatibleRuntimes:
+        - nodejs20.x
 
   #==========================================================================================================================================================
   # Application Load Balancer (ALB)
   #==========================================================================================================================================================
-  BankingALBTG:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Name: !Sub '${AWS::StackName}-BankingTG'
-      Port: 80 # hardcoded - the Target group forwards to ECS on port 80
-      Protocol: HTTP
-      VpcId: !Ref ExistingVpcId
-      TargetType: ip
-      HealthCheckEnabled: true
-      HealthCheckPath: /api/banking/health
-      HealthCheckIntervalSeconds: 30
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 3
+  # BankingALBTG:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     Name: !Sub '${AWS::StackName}-BankingTG'
+  #     Port: 80 # hardcoded - the Target group forwards to ECS on port 80
+  #     Protocol: HTTP
+  #     VpcId: !Ref ExistingVpcId
+  #     TargetType: ip
+  #     HealthCheckEnabled: true
+  #     HealthCheckPath: /api/banking/health
+  #     HealthCheckIntervalSeconds: 30
+  #     HealthCheckTimeoutSeconds: 5
+  #     HealthyThresholdCount: 2
+  #     UnhealthyThresholdCount: 3
 
-  MyTestLambda:
+  MyTimeLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-TestTargetLambda'
+      FunctionName: !Sub '${AWS::StackName}-TimeLambda'
       Handler: index.handler
-      Role: !GetAtt MyTestLambdaExecutionRole.Arn
+      Role: !GetAtt MyTimeLambdaExecutionRole.Arn
       Code:
         ZipFile: |
           exports.handler = async (event) => {
@@ -341,20 +366,20 @@ Resources:
       MemorySize: 128
       Timeout: 10
 
-  MyLambdaALBListenerRule:
+  MyTimeLambdaALBListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       Actions:
         - Type: forward
-          TargetGroupArn: !Ref MyTestLambdaTG
+          TargetGroupArn: !Ref MyTimeLambdaTG
       Conditions:
         - Field: path-pattern
           Values:
             - /api/time
       ListenerArn: !Ref MyALBListener
-      Priority: 2
+      Priority: 3
 
-  MyTestLambdaExecutionRole:
+  MyTimeLambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -367,24 +392,55 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
 
-  MyTestLambdaTG:
+  MyTimeLambdaTG:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub '${AWS::StackName}-LambdaTG'
+      Name: !Sub '${AWS::StackName}-TimeLambdaTG'
       TargetType: lambda
       Targets:
-        - Id: !GetAtt MyTestLambda.Arn
+        - Id: !GetAtt MyTimeLambda.Arn
       HealthCheckEnabled: false
 
-  MyTestLambdaInvokePermission:
+  MyTimeLambdaInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !GetAtt MyTestLambda.Arn
+      FunctionName: !GetAtt MyTimeLambda.Arn
       Principal: 'elasticloadbalancing.amazonaws.com'
       SourceArn: !Sub
         - 'arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:targetgroup/${TargetGroupName}/*'
-        - TargetGroupName: !Sub '${AWS::StackName}-LambdaTG'
+        - TargetGroupName: !Sub '${AWS::StackName}-TimeLambdaTG'
+
+  MyTablesLambdaALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref MyTablesLambdaTG
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /api/tables
+      ListenerArn: !Ref MyALBListener
+      Priority: 2
+
+  MyTablesLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt MyCreateTablesFunction.Arn
+      Principal: elasticloadbalancing.amazonaws.com
+      SourceArn: !Sub
+        - arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:targetgroup/${TargetGroupName}/*
+        - TargetGroupName: !Sub '${AWS::StackName}-TablesLambdaTG'
+
+  MyTablesLambdaTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${AWS::StackName}-TablesLambdaTG'
+      TargetType: lambda
+      Targets:
+        - Id: !GetAtt MyCreateTablesFunction.Arn
 
   MyALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -422,191 +478,12 @@ Resources:
   #==========================================================================================================================================================
   # ECS with Fargate launch type for the following functionality: Deposit, Withdraw, Transfer money.
   #==========================================================================================================================================================
-  MyECSCluster:
-    Type: AWS::ECS::Cluster
-    Properties:
-      ClusterName: !Sub '${AWS::StackName}-Cluster'
-
-  MyECSExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-        # - arn:aws:iam::aws:policy/AWSAppRunnerServicePolicyForECRAccess
-
-  MyECSTaskRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
-
-  # Banking service
-  #----------------
-  BankingECSLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Ref LogGroupName
-      RetentionInDays: 3
-
-  BankingALBListenerRule:
-    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Properties:
-      ListenerArn: !Ref MyALBListener
-      Conditions:
-        - Field: path-pattern
-          Values:
-            - /api/banking/*
-      Actions:
-        - Type: forward
-          TargetGroupArn: !Ref BankingALBTG
-      Priority: 1
-
-  BankingECSTaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub '${AWS::StackName}-banking-task'
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: !Ref ECSContainerCpu
-      Memory: !Ref ECSContainerMemory
-      ExecutionRoleArn: !GetAtt MyECSExecutionRole.Arn
-      TaskRoleArn: !GetAtt MyECSTaskRole.Arn
-      ContainerDefinitions:
-        - Name: 'banking-task'
-          Image: !Ref BankingEcrImageUri
-          PortMappings:
-            - ContainerPort: !Ref ECSContainerPort # The port the app listens on
-              Protocol: tcp
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref LogGroupName
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: !Ref AWS::StackName
-          Environment:
-            - Name: PORT
-              Value: !Ref ECSContainerPort
-
-  BankingECSService:
-    Type: AWS::ECS::Service
-    DependsOn: BankingALBListenerRule # This ensures the target group is associated with ALB via the listener rule
-    Properties:
-      ServiceName: !Sub '${AWS::StackName}-${BankingServiceName}'
-      Cluster: !Ref MyECSCluster
-      TaskDefinition: !Ref BankingECSTaskDefinition
-      DesiredCount: !Ref ECSDesiredCount
-      LaunchType: FARGATE
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          SecurityGroups:
-            - !Ref MyECSServicesSG
-          Subnets:
-            - !Ref MyPublicSubnet1
-            # - !Ref MyECSPrivateSubnet1 # TODO
-            # - !Ref MyECSPrivateSubnet2 # TODO
-          AssignPublicIp: ENABLED
-      DeploymentConfiguration:
-        MaximumPercent: 200
-        MinimumHealthyPercent: 100
-      EnableExecuteCommand: true
-      LoadBalancers:
-        - ContainerName: 'banking-task'
-          ContainerPort: !Ref ECSContainerPort
-          TargetGroupArn: !Ref BankingALBTG # the target group that the ALB will use to route traffic to the container instances
-
-  #==========================================================================================================================================================
-  # TODO: EKS (Kubernetes) with Fargate launch type for the same functionality (Deposit, Withdraw, Transfer).
-  #==========================================================================================================================================================
-
-  #==========================================================================================================================================================
-  # Amazon RDS for Users and Accounts
-  #==========================================================================================================================================================
-  # MyRDSDBInstance:
-  #   Type: AWS::RDS::DBInstance
+  # MyECSCluster:
+  #   Type: AWS::ECS::Cluster
   #   Properties:
-  #     DBInstanceIdentifier: !Sub '${AWS::StackName}-RDS'
-  #     AllocatedStorage: '20'
-  #     DBInstanceClass: db.t3.micro
-  #     Engine: postgres
-  #     EngineVersion: '12.5'
-  #     MasterUsername: !Sub '${DBUsername}' # Placeholder for username, replace with parameter if needed
-  #     MasterUserPassword: !Sub '${DBPassword}' # Placeholder for password, replace with parameter if needed
-  #     DBSubnetGroupName: !Ref RDSSubnetGroup
-  #     VPCSecurityGroups:
-  #       - !Ref MyRDSSG
-  #     BackupRetentionPeriod: 7
+  #     ClusterName: !Sub '${AWS::StackName}-Cluster'
 
-  # RDSSubnetGroup:
-  #   Type: AWS::RDS::DBSubnetGroup
-  #   Properties:
-  #     DBSubnetGroupDescription: Subnet group for SaasyBank RDS
-  #     SubnetIds:
-  #       - !Ref MyRDSPrivateSubnet1
-  #       - !Ref MyRDSPrivateSubnet2
-  #     DBSubnetGroupName: SaasyBankSubnetGroup
-
-  # CreateTablesFunction:
-  #   Type: AWS::Lambda::Function
-  #   Properties:
-  #     FunctionName: CreateRDSDatabaseTables
-  #     Handler: index.handler
-  #     Role: !GetAtt CreateTablesLambdaExecutionRole.Arn
-  #     Code:
-  #       ZipFile: |
-  #         import json
-  #         import psycopg2
-
-  #         def handler(event, context):
-  #             conn = psycopg2.connect(
-  #                 dbname='postgres',
-  #                 user='YOUR_MASTER_USERNAME',
-  #                 password='YOUR_MASTER_PASSWORD',
-  #                 host='YOUR_RDS_ENDPOINT',
-  #                 port='5432'
-  #             )
-  #             cur = conn.cursor()
-  #             # Create tables
-  #             cur.execute('''CREATE TABLE IF NOT EXISTS users (
-  #                             id SERIAL PRIMARY KEY,
-  #                             username VARCHAR(50) UNIQUE NOT NULL,
-  #                             password VARCHAR(200) NOT NULL
-  #                         );''')
-  #             cur.execute('''CREATE TABLE IF NOT EXISTS accounts (
-  #                             id SERIAL PRIMARY KEY,
-  #                             user_id INT NOT NULL,
-  #                             balance DECIMAL(10, 2) NOT NULL,
-  #                             FOREIGN KEY (user_id) REFERENCES users(id)
-  #                         );''')
-  #             conn.commit()
-  #             cur.close()
-  #             conn.close()
-  #             return {
-  #                 'statusCode': 200,
-  #                 'body': json.dumps('Tables created successfully!')
-  #             }
-  #     Runtime: python3.8
-  #     Timeout: 300
-  #     Environment:
-  #       DB_USERNAME: !Ref MasterUsername
-  #       DB_PASSWORD: !Ref MasterPassword
-  #       RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
-
-  # CreateTablesLambdaExecutionRole:
+  # MyECSExecutionRole:
   #   Type: AWS::IAM::Role
   #   Properties:
   #     AssumeRolePolicyDocument:
@@ -614,18 +491,185 @@ Resources:
   #       Statement:
   #         - Effect: Allow
   #           Principal:
-  #             Service: lambda.amazonaws.com
+  #             Service: ecs-tasks.amazonaws.com
   #           Action: sts:AssumeRole
-  #     Policies:
-  #       - PolicyName: LambdaRDSAccessPolicy
-  #         PolicyDocument:
-  #           Version: '2012-10-17'
-  #           Statement:
-  #             - Effect: Allow
-  #               Action:
-  #                 - rds:DescribeDBInstances
-  #                 - rds:Connect
-  #               Resource: '*'
+  #     ManagedPolicyArns:
+  #       - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  #       # - arn:aws:iam::aws:policy/AWSAppRunnerServicePolicyForECRAccess
+
+  # MyECSTaskRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: ecs-tasks.amazonaws.com
+  #           Action: sts:AssumeRole
+  #     ManagedPolicyArns:
+  #       - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+
+  # Banking service
+  #----------------
+  # BankingECSLogGroup:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     LogGroupName: !Ref LogGroupName
+  #     RetentionInDays: 3
+
+  # BankingALBListenerRule:
+  #   Type: AWS::ElasticLoadBalancingV2::ListenerRule
+  #   Properties:
+  #     ListenerArn: !Ref MyALBListener
+  #     Conditions:
+  #       - Field: path-pattern
+  #         Values:
+  #           - /api/banking/*
+  #     Actions:
+  #       - Type: forward
+  #         TargetGroupArn: !Ref BankingALBTG
+  #     Priority: 1
+
+  # BankingECSTaskDefinition:
+  #   Type: AWS::ECS::TaskDefinition
+  #   Properties:
+  #     Family: !Sub '${AWS::StackName}-banking-task'
+  #     NetworkMode: awsvpc
+  #     RequiresCompatibilities:
+  #       - FARGATE
+  #     Cpu: !Ref ECSContainerCpu
+  #     Memory: !Ref ECSContainerMemory
+  #     ExecutionRoleArn: !GetAtt MyECSExecutionRole.Arn
+  #     TaskRoleArn: !GetAtt MyECSTaskRole.Arn
+  #     ContainerDefinitions:
+  #       - Name: 'banking-task'
+  #         Image: !Ref BankingEcrImageUri
+  #         PortMappings:
+  #           - ContainerPort: !Ref ECSContainerPort # The port the app listens on
+  #             Protocol: tcp
+  #         LogConfiguration:
+  #           LogDriver: awslogs
+  #           Options:
+  #             awslogs-group: !Ref LogGroupName
+  #             awslogs-region: !Ref AWS::Region
+  #             awslogs-stream-prefix: !Ref AWS::StackName
+  #         Environment:
+  #           - Name: PORT
+  #             Value: !Ref ECSContainerPort
+
+  # BankingECSService:
+  #   Type: AWS::ECS::Service
+  #   DependsOn: BankingALBListenerRule # This ensures the target group is associated with ALB via the listener rule
+  #   Properties:
+  #     ServiceName: !Sub '${AWS::StackName}-${BankingServiceName}'
+  #     Cluster: !Ref MyECSCluster
+  #     TaskDefinition: !Ref BankingECSTaskDefinition
+  #     DesiredCount: !Ref ECSDesiredCount
+  #     LaunchType: FARGATE
+  #     NetworkConfiguration:
+  #       AwsvpcConfiguration:
+  #         SecurityGroups:
+  #           - !Ref MyECSServicesSG
+  #         Subnets:
+  #           # - !Ref MyECSPrivateSubnet1 # TODO
+  #           # - !Ref MyECSPrivateSubnet2 # TODO
+  #           - !Ref MyPublicSubnet1
+  #           - !Ref MyPublicSubnet2
+  #         AssignPublicIp: ENABLED
+  #     DeploymentConfiguration:
+  #       MaximumPercent: 200
+  #       MinimumHealthyPercent: 100
+  #     EnableExecuteCommand: true
+  #     LoadBalancers:
+  #       - ContainerName: 'banking-task'
+  #         ContainerPort: !Ref ECSContainerPort
+  #         TargetGroupArn: !Ref BankingALBTG # the target group that the ALB will use to route traffic to the container instances
+
+  #==========================================================================================================================================================
+  # TODO: EKS (Kubernetes) with Fargate launch type for the same functionality (Deposit, Withdraw, Transfer).
+  #==========================================================================================================================================================
+
+  #==========================================================================================================================================================
+  # RDS
+  #==========================================================================================================================================================
+  MyRDSDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub '${AWS::StackName}-RDS'
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      Engine: postgres
+      EngineVersion: '16.4'
+      MasterUsername: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+      MasterUserPassword: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      VPCSecurityGroups:
+        - !Ref MyRDSSG
+      BackupRetentionPeriod: 0 # Set to 0 to disable automated backups retention
+      PubliclyAccessible: !If [AllowRDSPublicAccessCondition, true, false]
+    DeletionPolicy: Delete # This applies when the stack is deleted; ensure no final snapshot is created.
+
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub '${AWS::StackName}-RDSSubnetGroup'
+      SubnetIds:
+        # - !Ref MyRDSPrivateSubnet1 # TODO
+        # - !Ref MyRDSPrivateSubnet2 # TODO
+        - !Ref MyPublicSubnet1
+        - !Ref MyPublicSubnet2
+      DBSubnetGroupName: !Sub '${AWS::StackName}-RDSSubnetGroup'
+
+  MyCreateTablesLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: LambdaRDSAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:Connect
+                Resource: '*'
+
+  MyCreateTablesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/sql-tables/
+      Handler: creation.handler
+      Runtime: nodejs20.x
+      Layers:
+        - !Ref pgLayer
+      Timeout: 300
+      Environment:
+        Variables:
+          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+          RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
+      VpcConfig:
+        SubnetIds:
+          - !Ref MyPublicSubnet1
+          - !Ref MyPublicSubnet2
+        SecurityGroupIds:
+          - !Ref MyECSServicesSG
+      Role: !GetAtt MyCreateTablesLambdaExecutionRole.Arn
+
+  # MyCreateTablesFunctionCustomResource:
+  #   Type: Custom::DBInitializer
+  #   Properties:
+  #     ServiceToken: !GetAtt MyCreateTablesFunction.Arn
 
   #==========================================================================================================================================================
   # Optimizations (TODO?) - async invocations + websocket responses
@@ -652,21 +696,22 @@ Outputs:
     Description: 'ID of the ECS Security Group'
     Value: !Ref MyECSServicesSG
 
-  ECSExecutionRoleArn:
-    Description: 'ARN of the ECS Execution Role'
-    Value: !GetAtt MyECSExecutionRole.Arn
-
-  ECSTaskRoleArn:
-    Description: 'ARN of the ECS Task Role'
-    Value: !GetAtt MyECSTaskRole.Arn
-
   LoadBalancerURL:
     Description: 'LoadBalancer URL'
     Value: !Sub 'http://${MyALB.DNSName}'
 
-  ECSServiceName:
-    Description: 'Name of the ECS service'
-    Value: !Ref BankingECSService
-# RDSInstanceEndpoint:
-#   Description: 'RDS Instance Endpoint'
-#   Value: !GetAtt MyRDSDBInstance.Endpoint.Address
+  # ECSExecutionRoleArn:
+  #   Description: 'ARN of the ECS Execution Role'
+  #   Value: !GetAtt MyECSExecutionRole.Arn
+
+  # ECSTaskRoleArn:
+  #   Description: 'ARN of the ECS Task Role'
+  #   Value: !GetAtt MyECSTaskRole.Arn
+
+  # ECSServiceName:
+  #   Description: 'Name of the ECS service'
+  #   Value: !Ref BankingECSService
+
+  RDSInstanceEndpoint:
+    Description: 'RDS Instance Endpoint'
+    Value: !GetAtt MyRDSDBInstance.Endpoint.Address

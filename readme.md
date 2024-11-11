@@ -14,7 +14,7 @@
 
 ## Architecture Diagram
 
-![SaasyBank Architecture Diagram](link_to_your_diagram.png) <!-- This is a placeholder. Replace with actual image link. -->
+![SaasyBank Architecture Diagram](https://lucid.app/publicSegments/view/a5f39991-1003-456c-a1e5-4608bc855fd7/image.jpeg)link. -->
 
 ---
 

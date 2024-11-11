@@ -1,6 +1,7 @@
 # ==========================================================================
 # Execute all HTTP requests deployed by the last stack with test dummy data.
 # ==========================================================================
+Write-Host " $(Split-Path -Leaf $PSCommandPath) ..." -ForegroundColor White -BackgroundColor DarkBlue
 
 # Extract LoadBalancerURL from the last cloudformation stack:
 $commonConstants = ./common-constants.ps1
@@ -23,6 +24,12 @@ $requests = @(
         Method = "GET"
         Url = "$loadBalancerURL/api/time"
         ExpectedResponse = @{dataType='time'}
+    },
+    @{
+        Name = "Tables"
+        Method = "GET"
+        Url = "$loadBalancerURL/api/tables"
+        ExpectedResponse = @{message="Table created, record added, and deleted successfully!"}
     },
     @{
         Name = "Health Check"
@@ -60,6 +67,7 @@ foreach ($request in $requests) {
     $body = $request.Body
 
     # Send the request and capture the response
+    $response = ''
     if ($method -eq "GET") {
         $response = Invoke-RestMethod -Method $method -Uri $url
     } else {
