@@ -1,6 +1,6 @@
 Write-Host " $(Split-Path -Leaf $PSCommandPath) ..." -ForegroundColor White -BackgroundColor DarkBlue
 
-. .\Get-ElapsedTimeFormatted.ps1
+. ./get-ElapsedTimeFormatted.ps1
 
 $startTime = Get-Date
 # $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
@@ -33,11 +33,12 @@ if ($LASTEXITCODE -eq 0) {
         $ecrBankingRepositoryName = "banking-repository"
         $bankingServiceName = "banking-service"
 
-        $bankingDockerResults = @{ecrImageUri = "575491442067.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:latest"}
-        # ./dev-build-push-docker-image.ps1 `
-        #     -stackName $commonConstants.stackName `
-        #     -ecrRepositoryName $ecrBankingRepositoryName `
-        #     -serviceName $bankingServiceName
+        # Write-Host "Skipping docker build and push !" -ForegroundColor Yellow -BackgroundColor DarkGreen
+        $bankingDockerResults = # @{ecrImageUri = "575491442067.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:latest"}
+        ./dev-build-push-docker-image.ps1 `
+            -stackName $commonConstants.stackName `
+            -ecrRepositoryName $ecrBankingRepositoryName `
+            -serviceName $bankingServiceName
 
         $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
         Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Build completed. Deploying .."
@@ -54,7 +55,7 @@ if ($LASTEXITCODE -eq 0) {
             "ExistingVpcId='vpc-08016eb77e7ac9962'",
             # "ExistingRouteTableId='rtb-!!!!!!!!!!!!!!'",
             "BankingServiceName='$bankingServiceName'",
-            "BankingEcrImageUri='$($bankingDockerResults.ecrImageUri)'",
+            "BankingTaskEcrImageUri='$($bankingDockerResults.ecrImageUri)'",
             "AllowRDSPublicAccess='$allowRDSPublicAccess'"
         )
 

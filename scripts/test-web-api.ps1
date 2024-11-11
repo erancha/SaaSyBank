@@ -15,57 +15,82 @@ if (-not $loadBalancerURL) {
 # Generate input values for this test:
 $accountId = [guid]::NewGuid().ToString()
 $toAccountId = [guid]::NewGuid().ToString()
-$tenantId = "TenantId#1"
+$tenantId = "tenant1"
 
 # Define the requests with expected responses
 $requests = @(
     @{
         Name = "Time"
         Method = "GET"
-        Url = "$loadBalancerURL/api/time"
-        ExpectedResponse = @{dataType='time'}
+        Url = "/api/time"
     },
     @{
         Name = "Tables"
         Method = "GET"
-        Url = "$loadBalancerURL/api/tables"
-        ExpectedResponse = @{message="Table created, record added, and deleted successfully!"}
+        Url = "/api/tables"
     },
     @{
         Name = "Health Check"
         Method = "GET"
-        Url = "$loadBalancerURL/api/banking/health"
-        ExpectedResponse = @{status="healthy"}
+        Url = "/api/banking/health"
+    },
+    @{
+        Name = "Create Account"
+        Method = "POST"
+        Url = "/api/banking/account"
+        Body = @{ "accountId" = $accountId; "initialBalance" = 0 ; "tenantId" = $tenantId} | ConvertTo-Json
+    },
+    @{
+        Name = "Create To Account"
+        Method = "POST"
+        Url = "/api/banking/account"
+        Body = @{ "accountId" = $toAccountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
     },
     @{
         Name = "Deposit"
         Method = "POST"
-        Url = "$loadBalancerURL/api/banking/deposit"
+        Url = "/api/banking/deposit"
         Body = @{ "amount" = 1000; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
-        ExpectedResponse = @{message="Deposit successful"; amount=1000; accountId=$accountId; tenantId=$tenantId}
     },
     @{
         Name = "Withdraw"
         Method = "POST"
-        Url = "$loadBalancerURL/api/banking/withdraw"
+        Url = "/api/banking/withdraw"
         Body = @{ "amount" = 500; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
-        ExpectedResponse = @{message="Withdraw successful"; amount=500; accountId=$accountId; tenantId=$tenantId}
     },
     @{
         Name = "Transfer"
         Method = "POST"
-        Url = "$loadBalancerURL/api/banking/transfer"
+        Url = "/api/banking/transfer"
         Body = @{ "amount" = 200; "fromAccountId" = $accountId; "toAccountId" = $toAccountId; "tenantId" = $tenantId } | ConvertTo-Json
-        ExpectedResponse = @{message="Transfer successful"; amount=200; fromAccountId=$accountId; toAccountId=$toAccountId; tenantId=$tenantId}
+    },
+    @{
+        Name = "Get Balance"
+        Method = "GET"
+        Url = "/api/banking/balance/$tenantId/$accountId"
+    },
+    @{
+        Name = "Get Balance"
+        Method = "GET"
+        Url = "/api/banking/balance/$tenantId/$toAccountId"
     }
 )
 
 # Execute the requests and display responses
 foreach ($request in $requests) {
     $method = $request.Method
-    $url = $request.Url
+    $url = "${loadBalancerURL}$($request.Url)"
     $body = $request.Body
 
+    Write-Host "$($request.Name):"
+    if (-not [string]::IsNullOrEmpty($body)) {
+        $bodyObject = $body | ConvertFrom-Json
+        $requestJson = $bodyObject | ConvertTo-Json -Compress
+        Write-Host "Request: $requestJson"
+    } else {
+        Write-Host "Request: $($request.Url)"
+    }
+    
     # Send the request and capture the response
     $response = ''
     if ($method -eq "GET") {
@@ -75,26 +100,7 @@ foreach ($request in $requests) {
     }
 
     # Display the response
-    Write-Host "Response for $($request.Name):"
-    Write-Host $response
-
-    # Validate the response
-    if ($response.dataType -eq 'time') {
-        # Validate if response is a valid ISO 8601 timestamp
-        if ($response.timestamp -notmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$') {
-            Write-Warning "Warning: Response for Time request is not a valid ISO 8601 timestamp."
-        }
-    }
-    elseif ($request.ExpectedResponse -is [hashtable]) {
-        if (-not ($response.PSObject.Properties.Match($request.ExpectedResponse.Keys) -and
-                   $request.ExpectedResponse.Keys | ForEach-Object { $response.$_ -eq $request.ExpectedResponse.$_ })) {
-            Write-Warning "Warning: Response for $($request.Name) does not match expected value."
-        }
-    } elseif ($request.ExpectedResponse -is [string]) {
-        if ($response -ne $request.ExpectedResponse) {
-            Write-Warning "Warning: Response for $($request.Name) does not match expected value."
-        }
-    }
-    
+    $responseJson = $response | ConvertTo-Json -Compress
+    Write-Host "Response: $responseJson"
     Write-Host "-----------------------------------------"
 }

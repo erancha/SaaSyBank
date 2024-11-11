@@ -24,7 +24,7 @@ $returnValues = @{
 Write-Host "Building and pushing Docker images for service: $serviceName..."
 
 # Build Docker image
-Write-Host "Building Docker image..."
+Write-Host "Building Docker image..." -ForegroundColor White -BackgroundColor Magenta
 $scriptsFolder = (Get-Location).Path
 Set-Location "${scriptsFolder}/../backend/${serviceName}"
 $lowerServiceName = $serviceName.ToLower()

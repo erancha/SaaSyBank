@@ -1,6 +1,6 @@
 {
 	"info": {
-		"_postman_id": "2e94b031-c7cb-4a19-bd8e-0f7f64fb6394",
+		"_postman_id": "9844769b-ae93-44e5-88ff-3526169cda02",
 		"name": "Banking API",
 		"description": "API for banking operations",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
@@ -63,6 +63,55 @@
 			"response": []
 		},
 		{
+			"name": "Create Account",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"accountId\": \"d40a84fd-0661-4456-a4d8-a62cc619c628\", \"initialBalance\": 0, \"tenantId\": \"tenant1\"}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/account",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"account"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Balance",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/balance/tenant1/d40a84fd-0661-4456-a4d8-a62cc619c628",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"balance",
+						"tenant1",
+						"d40a84fd-0661-4456-a4d8-a62cc619c628"
+					]
+				}
+			},
+			"response": []
+		},
+		{
 			"name": "Deposit",
 			"request": {
 				"method": "POST",
@@ -74,7 +123,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\"amount\": 1000, \"accountId\": \"12345\", \"tenantId\": \"tenant1\"}"
+					"raw": "{\"amount\": 1000, \"accountId\": \"d40a84fd-0661-4456-a4d8-a62cc619c628\", \"tenantId\": \"tenant1\"}"
 				},
 				"url": {
 					"raw": "{{baseUrl}}/api/banking/deposit",
@@ -102,7 +151,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\"amount\": 500, \"accountId\": \"12345\", \"tenantId\": \"tenant1\"}"
+					"raw": "{\"amount\": 500, \"accountId\": \"d40a84fd-0661-4456-a4d8-a62cc619c628\", \"tenantId\": \"tenant1\"}"
 				},
 				"url": {
 					"raw": "{{baseUrl}}/api/banking/withdraw",
@@ -130,7 +179,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\"amount\": 200, \"fromAccountId\": \"12345\", \"toAccountId\": \"67890\", \"tenantId\": \"tenant1\"}"
+					"raw": "{\"amount\": 200, \"fromAccountId\": \"d40a84fd-0661-4456-a4d8-a62cc619c628\", \"toAccountId\": \"d19e8953-5ff3-4b74-8978-4c7a211babfc\", \"tenantId\": \"tenant1\"}"
 				},
 				"url": {
 					"raw": "{{baseUrl}}/api/banking/transfer",

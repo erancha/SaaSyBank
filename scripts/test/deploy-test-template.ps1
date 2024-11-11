@@ -3,7 +3,7 @@ param (
     [string]$templateSuffix
 )
 
-. ..\Get-ElapsedTimeFormatted.ps1
+. ../get-ElapsedTimeFormatted.ps1
 
 $startTime = Get-Date
 $currentLocation = Get-Location
@@ -48,12 +48,12 @@ Remove-Job -Job $deployJob
 # Call the ECS listing script
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
 Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Listing ECS clusters, services, tasks and containers ..."
-../List-ECS.ps1 -region $region
+../list-ECS.ps1 -region $region
 
 # Call the Subnet listing script
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
 Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Listing all subnets ..."
-../List-Subnets.ps1 -region $region
+../list-Subnets.ps1 -region $region
 
 # =====================================================
 # Completion:

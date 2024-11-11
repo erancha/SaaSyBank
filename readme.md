@@ -3,7 +3,7 @@
 ## Overview
 
 **Application Name**: SaasyBank.  
-**Functionality**: Deposit, withdraw, and transfer money between accounts.  
+**Functionality**: Balance, Deposit, withdraw, and transfer money between accounts.  
 **Deployable** as both a **single-tenant** and a **multi-tenant** SaaS application.  
 **Initial Users Count**: 1,000 (expected to grow rapidly).  
 **Service Level Agreement (SLA)**: Highest possible (TBD).  
@@ -14,7 +14,7 @@
 
 ## Architecture Diagram
 
-![SaasyBank Architecture Diagram](https://lucid.app/publicSegments/view/a5f39991-1003-456c-a1e5-4608bc855fd7/image.jpeg)link. -->
+![SaasyBank Architecture Diagram](https://lucid.app/publicSegments/view/d1c61e72-64e2-41f4-ae11-c6661a6bf5e9/image.jpeg)link. -->
 
 ---
 
@@ -37,12 +37,13 @@ The backend will be hosted on AWS with the following components:
 #### 2.2 **Amazon Cognito**
 
 - **Purpose**: User authentication and management.
-- **Functionality**: Secure user sign-up, sign-in, and access control.
 
-#### 2.3 **Kubernetes with Fargate Launch Type**
+#### 2.3 **ECS with Fargate Launch Type**
 
-- **Purpose**: Run containerized applications for deposit, withdraw, and transfer functionalities.
-- **Deployment**: Managed using Amazon EKS (Elastic Kubernetes Service).
+- Here’s a rephrased version:
+
+- **Objective**: Execute containerized applications to enable functionalities for checking account balances, making deposits, withdrawing funds, and transferring money.
+- **Deployment**: Managed using Amazon ECS (Elastic Container Service).
 - **Network**: Deployed in a private subnet for enhanced security.
 
 #### 2.4 **Amazon RDS with PostgreSQL**
@@ -54,7 +55,7 @@ The backend will be hosted on AWS with the following components:
 ### 3. **Deployment Flexibility**
 
 - The application will be deployable as both a **single-tenant** and a **multi-tenant** SaaS application.
-- **CloudFormation Template Parameter**: A parameter will be included in the CloudFormation template to specify the deployment type (single-tenant or multi-tenant).
+- **CloudFormation Template Parameter**: A parameter will be included in the CloudFormation template to specify the type of deployment (single-tenant or multi-tenant).
   - **Single-Tenant Mode**: Each customer has their own isolated environment.
   - **Multi-Tenant Mode**: Multiple customers share the same environment with data segregation.
 
@@ -75,7 +76,7 @@ In a later phase, the following services will be integrated for improved perform
 
 ## Security Considerations
 
-- **Network Security**: Utilize private subnets for sensitive components (Kubernetes and RDS).
+- **Network Security**: Utilize private subnets for sensitive components (ECS and RDS).
 - **Data Security**: Enable encryption at rest and in transit for RDS and other sensitive data.
 - **Authentication**: Use Amazon Cognito for secure user management.
 - **Access Control**: Role-based access policies for AWS resources.

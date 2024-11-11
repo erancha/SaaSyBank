@@ -4,7 +4,7 @@ Description: CloudFormation template to set up ECS Fargate in a public subnet.
 Parameters:
   EcrImageUri:
     Type: String
-    Description: Name of the banking service image in the ECR repository
+    Description: Name of the banking task image in the ECR repository
 
 Resources:
   MyVPC:

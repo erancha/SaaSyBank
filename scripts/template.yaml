@@ -23,13 +23,17 @@ Parameters:
     Description: 'Log group name for all ECS services'
     Default: '/ecs/'
 
+  BankingDatabaseName:
+    Type: String
+    Default: bankdb
+    Description: Name of the banking database name
   BankingServiceName:
     Type: String
     Default: banking-service
     Description: Name of the banking service
-  BankingEcrImageUri:
+  BankingTaskEcrImageUri:
     Type: String
-    Description: Name of the banking service image in the ECR repository
+    Description: Name of the banking task image in the ECR repository
 
   ECSContainerPort:
     Type: Number
@@ -328,20 +332,20 @@ Resources:
   #==========================================================================================================================================================
   # Application Load Balancer (ALB)
   #==========================================================================================================================================================
-  # BankingALBTG:
-  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
-  #   Properties:
-  #     Name: !Sub '${AWS::StackName}-BankingTG'
-  #     Port: 80 # hardcoded - the Target group forwards to ECS on port 80
-  #     Protocol: HTTP
-  #     VpcId: !Ref ExistingVpcId
-  #     TargetType: ip
-  #     HealthCheckEnabled: true
-  #     HealthCheckPath: /api/banking/health
-  #     HealthCheckIntervalSeconds: 30
-  #     HealthCheckTimeoutSeconds: 5
-  #     HealthyThresholdCount: 2
-  #     UnhealthyThresholdCount: 3
+  BankingALBTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${AWS::StackName}-BankingTG'
+      Port: 80 # hardcoded - the Target group forwards to ECS on port 80
+      Protocol: HTTP
+      VpcId: !Ref ExistingVpcId
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckPath: /api/banking/health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
 
   MyTimeLambda:
     Type: AWS::Lambda::Function
@@ -476,118 +480,126 @@ Resources:
   #         ValidationDomain: !GetAtt MyALB.DNSName
 
   #==========================================================================================================================================================
-  # ECS with Fargate launch type for the following functionality: Deposit, Withdraw, Transfer money.
+  # ECS with Fargate launch type for the following functionality: Balance, Deposit, Withdraw, Transfer money.
   #==========================================================================================================================================================
-  # MyECSCluster:
-  #   Type: AWS::ECS::Cluster
-  #   Properties:
-  #     ClusterName: !Sub '${AWS::StackName}-Cluster'
+  MyECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${AWS::StackName}-Cluster'
 
-  # MyECSExecutionRole:
-  #   Type: AWS::IAM::Role
-  #   Properties:
-  #     AssumeRolePolicyDocument:
-  #       Version: '2012-10-17'
-  #       Statement:
-  #         - Effect: Allow
-  #           Principal:
-  #             Service: ecs-tasks.amazonaws.com
-  #           Action: sts:AssumeRole
-  #     ManagedPolicyArns:
-  #       - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-  #       # - arn:aws:iam::aws:policy/AWSAppRunnerServicePolicyForECRAccess
+  MyECSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        # - arn:aws:iam::aws:policy/AWSAppRunnerServicePolicyForECRAccess
 
-  # MyECSTaskRole:
-  #   Type: AWS::IAM::Role
-  #   Properties:
-  #     AssumeRolePolicyDocument:
-  #       Version: '2012-10-17'
-  #       Statement:
-  #         - Effect: Allow
-  #           Principal:
-  #             Service: ecs-tasks.amazonaws.com
-  #           Action: sts:AssumeRole
-  #     ManagedPolicyArns:
-  #       - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+  MyECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
 
   # Banking service
   #----------------
-  # BankingECSLogGroup:
-  #   Type: AWS::Logs::LogGroup
-  #   Properties:
-  #     LogGroupName: !Ref LogGroupName
-  #     RetentionInDays: 3
+  BankingECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      RetentionInDays: 3
 
-  # BankingALBListenerRule:
-  #   Type: AWS::ElasticLoadBalancingV2::ListenerRule
-  #   Properties:
-  #     ListenerArn: !Ref MyALBListener
-  #     Conditions:
-  #       - Field: path-pattern
-  #         Values:
-  #           - /api/banking/*
-  #     Actions:
-  #       - Type: forward
-  #         TargetGroupArn: !Ref BankingALBTG
-  #     Priority: 1
+  BankingALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref MyALBListener
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /api/banking/*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BankingALBTG
+      Priority: 1
 
-  # BankingECSTaskDefinition:
-  #   Type: AWS::ECS::TaskDefinition
-  #   Properties:
-  #     Family: !Sub '${AWS::StackName}-banking-task'
-  #     NetworkMode: awsvpc
-  #     RequiresCompatibilities:
-  #       - FARGATE
-  #     Cpu: !Ref ECSContainerCpu
-  #     Memory: !Ref ECSContainerMemory
-  #     ExecutionRoleArn: !GetAtt MyECSExecutionRole.Arn
-  #     TaskRoleArn: !GetAtt MyECSTaskRole.Arn
-  #     ContainerDefinitions:
-  #       - Name: 'banking-task'
-  #         Image: !Ref BankingEcrImageUri
-  #         PortMappings:
-  #           - ContainerPort: !Ref ECSContainerPort # The port the app listens on
-  #             Protocol: tcp
-  #         LogConfiguration:
-  #           LogDriver: awslogs
-  #           Options:
-  #             awslogs-group: !Ref LogGroupName
-  #             awslogs-region: !Ref AWS::Region
-  #             awslogs-stream-prefix: !Ref AWS::StackName
-  #         Environment:
-  #           - Name: PORT
-  #             Value: !Ref ECSContainerPort
+  BankingECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${AWS::StackName}-banking-task'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref ECSContainerCpu
+      Memory: !Ref ECSContainerMemory
+      ExecutionRoleArn: !GetAtt MyECSExecutionRole.Arn
+      TaskRoleArn: !GetAtt MyECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: 'banking-task'
+          Image: !Ref BankingTaskEcrImageUri
+          PortMappings:
+            - ContainerPort: !Ref ECSContainerPort # The port the app listens on
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupName
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: !Ref AWS::StackName
+          Environment:
+            - Name: PORT
+              Value: !Ref ECSContainerPort
+            - Name: RDS_ENDPOINT
+              Value: !GetAtt MyRDSDBInstance.Endpoint.Address
+            - Name: DB_NAME
+              Value: !Ref BankingDatabaseName
+            - Name: DB_USERNAME
+              Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+            - Name: DB_PASSWORD
+              Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
 
-  # BankingECSService:
-  #   Type: AWS::ECS::Service
-  #   DependsOn: BankingALBListenerRule # This ensures the target group is associated with ALB via the listener rule
-  #   Properties:
-  #     ServiceName: !Sub '${AWS::StackName}-${BankingServiceName}'
-  #     Cluster: !Ref MyECSCluster
-  #     TaskDefinition: !Ref BankingECSTaskDefinition
-  #     DesiredCount: !Ref ECSDesiredCount
-  #     LaunchType: FARGATE
-  #     NetworkConfiguration:
-  #       AwsvpcConfiguration:
-  #         SecurityGroups:
-  #           - !Ref MyECSServicesSG
-  #         Subnets:
-  #           # - !Ref MyECSPrivateSubnet1 # TODO
-  #           # - !Ref MyECSPrivateSubnet2 # TODO
-  #           - !Ref MyPublicSubnet1
-  #           - !Ref MyPublicSubnet2
-  #         AssignPublicIp: ENABLED
-  #     DeploymentConfiguration:
-  #       MaximumPercent: 200
-  #       MinimumHealthyPercent: 100
-  #     EnableExecuteCommand: true
-  #     LoadBalancers:
-  #       - ContainerName: 'banking-task'
-  #         ContainerPort: !Ref ECSContainerPort
-  #         TargetGroupArn: !Ref BankingALBTG # the target group that the ALB will use to route traffic to the container instances
+  BankingECSService:
+    Type: AWS::ECS::Service
+    DependsOn: BankingALBListenerRule # This ensures the target group is associated with ALB via the listener rule
+    Properties:
+      ServiceName: !Sub '${AWS::StackName}-${BankingServiceName}'
+      Cluster: !Ref MyECSCluster
+      TaskDefinition: !Ref BankingECSTaskDefinition
+      DesiredCount: !Ref ECSDesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref MyECSServicesSG
+          Subnets:
+            # - !Ref MyECSPrivateSubnet1 # TODO
+            # - !Ref MyECSPrivateSubnet2 # TODO
+            - !Ref MyPublicSubnet1
+            - !Ref MyPublicSubnet2
+          AssignPublicIp: ENABLED
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      EnableExecuteCommand: true
+      LoadBalancers:
+        - ContainerName: 'banking-task'
+          ContainerPort: !Ref ECSContainerPort
+          TargetGroupArn: !Ref BankingALBTG # the target group that the ALB will use to route traffic to the container instances
 
   #==========================================================================================================================================================
-  # TODO: EKS (Kubernetes) with Fargate launch type for the same functionality (Deposit, Withdraw, Transfer).
+  # TODO: EKS (Kubernetes) with Fargate launch type for the same functionality (Balance, Deposit, Withdraw, Transfer).
   #==========================================================================================================================================================
 
   #==========================================================================================================================================================
@@ -606,6 +618,7 @@ Resources:
       DBSubnetGroupName: !Ref RDSSubnetGroup
       VPCSecurityGroups:
         - !Ref MyRDSSG
+      DBName: !Ref BankingDatabaseName
       BackupRetentionPeriod: 0 # Set to 0 to disable automated backups retention
       PubliclyAccessible: !If [AllowRDSPublicAccessCondition, true, false]
     DeletionPolicy: Delete # This applies when the stack is deleted; ensure no final snapshot is created.
@@ -655,9 +668,10 @@ Resources:
       Timeout: 300
       Environment:
         Variables:
+          RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
+          DB_NAME: !Ref BankingDatabaseName
           DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
           DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
-          RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
       VpcConfig:
         SubnetIds:
           - !Ref MyPublicSubnet1
@@ -665,11 +679,6 @@ Resources:
         SecurityGroupIds:
           - !Ref MyECSServicesSG
       Role: !GetAtt MyCreateTablesLambdaExecutionRole.Arn
-
-  # MyCreateTablesFunctionCustomResource:
-  #   Type: Custom::DBInitializer
-  #   Properties:
-  #     ServiceToken: !GetAtt MyCreateTablesFunction.Arn
 
   #==========================================================================================================================================================
   # Optimizations (TODO?) - async invocations + websocket responses
@@ -700,17 +709,17 @@ Outputs:
     Description: 'LoadBalancer URL'
     Value: !Sub 'http://${MyALB.DNSName}'
 
-  # ECSExecutionRoleArn:
-  #   Description: 'ARN of the ECS Execution Role'
-  #   Value: !GetAtt MyECSExecutionRole.Arn
+  ECSExecutionRoleArn:
+    Description: 'ARN of the ECS Execution Role'
+    Value: !GetAtt MyECSExecutionRole.Arn
 
-  # ECSTaskRoleArn:
-  #   Description: 'ARN of the ECS Task Role'
-  #   Value: !GetAtt MyECSTaskRole.Arn
+  ECSTaskRoleArn:
+    Description: 'ARN of the ECS Task Role'
+    Value: !GetAtt MyECSTaskRole.Arn
 
-  # ECSServiceName:
-  #   Description: 'Name of the ECS service'
-  #   Value: !Ref BankingECSService
+  ECSServiceName:
+    Description: 'Name of the ECS service'
+    Value: !Ref BankingECSService
 
   RDSInstanceEndpoint:
     Description: 'RDS Instance Endpoint'

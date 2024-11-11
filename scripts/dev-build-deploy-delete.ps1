@@ -3,7 +3,7 @@ param (
    [bool]$deleteTask = $false
 )
 
-. .\Get-ElapsedTimeFormatted.ps1
+. ./get-ElapsedTimeFormatted.ps1
 $startTime = Get-Date
 
 if (-not $skipBuild) {
@@ -12,21 +12,16 @@ if (-not $skipBuild) {
 
 $commonConstants = ./common-constants.ps1
 
-$formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
-Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Listing ECS clusters, services, tasks and containers ..."
-./List-ECS.ps1 -region $commonConstants.region
+# $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
+# Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Listing ECS clusters, services, tasks and containers ..."
+# ./list-ECS.ps1 -region $commonConstants.region
 
-$formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
-Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Listing all subnets ..."
-./List-Subnets.ps1 -region $commonConstants.region
+# $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
+# Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Listing all subnets ..."
+# ./list-Subnets.ps1 -region $commonConstants.region
 
 Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Testing all HTTP requests deployed by the stack ..."
 ./test-web-api.ps1
-
-# $scriptsFolder = (Get-Location).Path
-# Set-Location ../
-# ./backend/sql-tables/test-pg-local.ps1
-# Set-Location ${scriptsFolder}
 
 if (-not $deleteTask) {
    $validInput = $false
@@ -56,11 +51,11 @@ if ($deleteTask) {
 
    $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
    Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Listing ECS clusters, services, tasks and containers ..."
-   ./List-ECS.ps1 -region $commonConstants.region
+   ./list-ECS.ps1 -region $commonConstants.region
 
    $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
    Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Listing all subnets ..."
-   ./List-Subnets.ps1 -region $commonConstants.region
+   ./list-Subnets.ps1 -region $commonConstants.region
 }
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
