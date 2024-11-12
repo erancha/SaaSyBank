@@ -21,7 +21,7 @@ Parameters:
   LogGroupName:
     Type: String
     Description: 'Log group name for all ECS services'
-    Default: '/ecs/'
+    Default: '/aws/ecs/'
 
   BankingDatabaseName:
     Type: String
@@ -503,7 +503,15 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-        # - arn:aws:iam::aws:policy/AWSAppRunnerServicePolicyForECRAccess
+      # Policies: # TODO: Currently the deployment manually creates the log group: LogGroupName
+      #   - PolicyName: AllowCreateLogGroup
+      #     PolicyDocument:
+      #       Version: '2012-10-17'
+      #       Statement:
+      #         - Effect: Allow
+      #           Action:
+      #             - logs:CreateLogGroup
+      #           Resource: '*'
 
   MyECSTaskRole:
     Type: AWS::IAM::Role
@@ -570,9 +578,9 @@ Resources:
             - Name: DB_NAME
               Value: !Ref BankingDatabaseName
             - Name: DB_USERNAME
-              Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+              Value: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
             - Name: DB_PASSWORD
-              Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+              Value: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
 
   BankingECSService:
     Type: AWS::ECS::Service
@@ -602,51 +610,6 @@ Resources:
           ContainerPort: !Ref ECSContainerPort
           TargetGroupArn: !Ref BankingALBTG
 
-  # Auto Scaling resources
-  BankingECSServiceScalingTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    Properties:
-      MaxCapacity: !Ref ECSMaxCount
-      MinCapacity: !Ref ECSDesiredCount
-      ResourceId: !Sub 'service/${MyECSCluster}/${AWS::StackName}-${BankingServiceName}'
-      RoleARN: !GetAtt MyAppAutoScalingRole.Arn
-      ScalableDimension: 'ecs:service:DesiredCount'
-      ServiceNamespace: 'ecs'
-
-  BankingECSServiceScalingPolicy:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Sub '${AWS::StackName}-banking-scaling-policy'
-      PolicyType: TargetTrackingScaling
-      ScalingTargetId: !Ref BankingECSServiceScalingTarget
-      TargetTrackingScalingPolicyConfiguration:
-        TargetValue: 70.0
-        PredefinedMetricSpecification:
-          PredefinedMetricType: ECSServiceAverageCPUUtilization # Metric to track
-        ScaleInCooldown: 60 # Time to wait in seconds after scaling in before another scale in
-        ScaleOutCooldown: 60 # Time to wait in seconds after scaling out before another scale out
-
-  MyAppAutoScalingRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: application-autoscaling.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: AllowECSTaskScaling
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ecs:UpdateService
-                  - ecs:DescribeServices
-                Resource: '*'
-
   #==========================================================================================================================================================
   # TODO: EKS (Kubernetes) with Fargate launch type for the same functionality (Balance, Deposit, Withdraw, Transfer).
   #==========================================================================================================================================================
@@ -662,8 +625,8 @@ Resources:
       DBInstanceClass: db.t3.micro
       Engine: postgres
       EngineVersion: '16.4'
-      MasterUsername: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
-      MasterUserPassword: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+      MasterUsername: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
       DBSubnetGroupName: !Ref RDSSubnetGroup
       VPCSecurityGroups:
         - !Ref MyRDSSG
@@ -719,8 +682,8 @@ Resources:
         Variables:
           RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
           DB_NAME: !Ref BankingDatabaseName
-          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+          DB_USERNAME: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+          DB_PASSWORD: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
       VpcConfig:
         SubnetIds:
           - !Ref MyPublicSubnet1
@@ -730,8 +693,520 @@ Resources:
       Role: !GetAtt MyCreateTablesLambdaExecutionRole.Arn
 
   #==========================================================================================================================================================
-  # Optimizations (TODO?) - async invocations + websocket responses
+  # Cloudwatch dashboard
   #==========================================================================================================================================================
+  # MyDashboard:
+  #   Type: AWS::CloudWatch::Dashboard
+  #   Properties:
+  #     DashboardName: !Sub '${AWS::StackName}-Dashboard'
+  #     DashboardBody:
+  #       Fn::Sub: |
+  #         {
+  #             "widgets": [
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 12,
+  #                     "x": 18,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 300,
+  #                         "metrics": [
+  #                             [ "AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "${MyRDSDBInstance}", { "label": "${MyRDSDBInstance}" } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Average",
+  #                         "title": "CPUUtilization",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 6,
+  #                     "x": 18,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 300,
+  #                         "metrics": [
+  #                             [ "AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", "${MyRDSDBInstance}", { "label": "${MyRDSDBInstance}" } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Average",
+  #                         "title": "DatabaseConnections",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 18,
+  #                     "x": 18,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 300,
+  #                         "metrics": [
+  #                             [ "AWS/RDS", "FreeableMemory", "DBInstanceIdentifier", "${MyRDSDBInstance}", { "label": "${MyRDSDBInstance}" } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Average",
+  #                         "title": "FreeableMemory",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 0,
+  #                     "x": 0,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Average",
+  #                         "title": "Target Response Time",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 0,
+  #                     "x": 6,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Requests",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 42,
+  #                     "x": 6,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Target 5XXs",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 36,
+  #                     "x": 6,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTPCode_Target_4XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Target 4XXs",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 6,
+  #                     "x": 0,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_5XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "ELB 5XXs",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 12,
+  #                     "x": 12,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_4XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "ELB 4XXs",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 12,
+  #                     "x": 0,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_500_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "ELB 500s",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 18,
+  #                     "x": 0,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_502_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "ELB 502s",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 24,
+  #                     "x": 0,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_503_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "ELB 503s",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 30,
+  #                     "x": 0,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_504_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "ELB 504s",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 24,
+  #                     "x": 18,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "TargetConnectionErrorCount", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Target connection errors",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 12,
+  #                     "x": 6,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "RejectedConnectionCount", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Sum rejected connections",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 30,
+  #                     "x": 6,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTPCode_Target_3XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Target 3XXs",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 24,
+  #                     "x": 6,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTPCode_Target_2XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Target 2XXs",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 6,
+  #                     "x": 6,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "ActiveConnectionCount", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Active Connection Count",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 18,
+  #                     "x": 12,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "NewConnectionCount", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "New Connection Count",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 6,
+  #                     "x": 12,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "ProcessedBytes", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Processed Bytes",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 0,
+  #                     "x": 12,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "ConsumedLCUs", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Consumed Load Balancer Capacity Units",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 24,
+  #                     "x": 12,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "HTTP_Fixed_Response_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "HTTP fixed response count",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 18,
+  #                     "x": 6,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "period": 60,
+  #                         "metrics": [
+  #                             [ "AWS/ApplicationELB", "LambdaTargetProcessedBytes", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
+  #                         ],
+  #                         "region": "eu-central-1",
+  #                         "stat": "Sum",
+  #                         "title": "Lambda Target Processed Bytes",
+  #                         "yAxis": {
+  #                             "left": {
+  #                                 "min": 0
+  #                             }
+  #                         }
+  #                     }
+  #                 },
+  #                 {
+  #                     "height": 6,
+  #                     "width": 6,
+  #                     "y": 0,
+  #                     "x": 18,
+  #                     "type": "metric",
+  #                     "properties": {
+  #                         "metrics": [
+  #                             [ "AWS/ECS", "CPUUtilization", "ServiceName", "${BankingECSService.Name}", "ClusterName", "${MyECSCluster}", { "stat": "Minimum" } ],
+  #                             [ "...", { "stat": "Maximum" } ],
+  #                             [ "...", { "stat": "Average" } ]
+  #                         ],
+  #                         "period": 300,
+  #                         "region": "eu-central-1",
+  #                         "stacked": false,
+  #                         "title": "ECS CPU utilization",
+  #                         "view": "timeSeries"
+  #                     }
+  #                 }
+  #             ]
+  #         }
 
 Outputs:
   MyRouteTableId:

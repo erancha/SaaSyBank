@@ -9,7 +9,8 @@ $startTime = Get-Date
 $currentLocation = Get-Location
 
 $stackName = "MyTestECSFargate${templateSuffix}"
-$ecrImageUri = "575491442067.dkr.ecr.eu-central-1.amazonaws.com/banking-repository:latest"
+$accountId = aws sts get-caller-identity --query "Account" --output text
+$ecrImageUri = "${accountId}.dkr.ecr.eu-central-1.amazonaws.com/banking-repository:latest"
 
 # Start the CloudFormation deploy command in a background job
 $templateFile = Join-Path -Path $currentLocation.Path -ChildPath "template$templateSuffix.yaml"

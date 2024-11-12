@@ -10,7 +10,7 @@ $startTime = Get-Date
 # ==========================================================================
 # Execute all HTTP requests deployed by the last stack with test dummy data.
 # ==========================================================================
-Write-Host " $(Split-Path -Leaf $PSCommandPath) ..." -ForegroundColor White -BackgroundColor DarkBlue
+Write-Host " $(Split-Path -Leaf $PSCommandPath), Parameters:" ($PSBoundParameters.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -ForegroundColor White -BackgroundColor DarkBlue
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
 Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Retriving LoadBalancerURL from the last stack output ..."

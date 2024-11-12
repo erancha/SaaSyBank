@@ -1,0 +1,113 @@
+Resources:
+  # Define your Application Load Balancer
+  MyALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+
+  # # Create CloudWatch Dashboard
+  # MyDashboard:
+  #   Type: AWS::CloudWatch::Dashboard
+  #   Properties:
+  #     DashboardName: 'MyDashboard'
+  #     DashboardBody:
+  #       Fn::Sub: |
+  #         {
+  #           "widgets": [
+  #             {
+  #               "height": 6,
+  #               "width": 6,
+  #               "y": 0,
+  #               "x": 0,
+  #               "type": "metric",
+  #               "properties": {
+  #                 "period": 60,
+  #                 "metrics": [
+  #                   [ "AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "app/${ALBShortName}/${ALBId}", { "label": "${ALBShortName}", "visible": true } ]
+  #                 ],
+  #                 "region": "eu-central-1",
+  #                 "stat": "Average",
+  #                 "title": "ALB Target Response Time",
+  #                 "yAxis": {
+  #                   "left": {
+  #                     "min": 0
+  #                   }
+  #                 }
+  #               }
+  #             }
+  #             // Add more widgets if necessary
+  #           ]
+  #         }
+
+# Outputs to expose identifiers
+Outputs:
+  ALBShortName:
+    Value: !Sub 'app/${MyALB.Name}/${MyALB.Id}' # Constructs the desired short name
+# Resources:
+#   MyECSExecutionRole:
+#     Type: AWS::IAM::Role
+#     Properties:
+#       AssumeRolePolicyDocument:
+#         Version: '2012-10-17'
+#         Statement:
+#           - Effect: Allow
+#             Principal:
+#               Service: ecs-tasks.amazonaws.com
+#             Action: sts:AssumeRole
+#       ManagedPolicyArns:
+#         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+#       Policies:
+#         - PolicyName: AllowCreateLogGroup
+#           PolicyDocument:
+#             Version: '2012-10-17'
+#             Statement:
+#               - Effect: Allow
+#                 Action:
+#                   - logs:CreateLogGroup
+#                 Resource: '*'
+
+#   MyECSTaskRole:
+#     Type: AWS::IAM::Role
+#     Properties:
+#       AssumeRolePolicyDocument:
+#         Version: '2012-10-17'
+#         Statement:
+#           - Effect: Allow
+#             Principal:
+#               Service: ecs-tasks.amazonaws.com
+#             Action: sts:AssumeRole
+#       ManagedPolicyArns:
+#         - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+#       Policies:
+#         - PolicyName: AllowCreateLogGroup
+#           PolicyDocument:
+#             Version: '2012-10-17'
+#             Statement:
+#               - Effect: Allow
+#                 Action:
+#                   - logs:CreateLogGroup
+#                 Resource: '*'
+
+#   BankingECSTaskDefinition:
+#     Type: AWS::ECS::TaskDefinition
+#     Properties:
+#       Family: !Sub '${AWS::StackName}-banking-task'
+#       NetworkMode: awsvpc
+#       RequiresCompatibilities:
+#         - FARGATE
+#       Cpu: 256
+#       Memory: 512
+#       ExecutionRoleArn: !GetAtt MyECSExecutionRole.Arn
+#       TaskRoleArn: !GetAtt MyECSTaskRole.Arn
+#       ContainerDefinitions:
+#         - Name: 'banking-task'
+#           Image: '575491442067.dkr.ecr.eu-central-1.amazonaws.com/banking-service:latest'
+#           PortMappings:
+#             - ContainerPort: 8080
+#               Protocol: tcp
+#           LogConfiguration:
+#             LogDriver: awslogs
+#             Options:
+#               awslogs-group: /aws/ecs/
+#               awslogs-region: !Ref AWS::Region
+#               awslogs-stream-prefix: !Ref AWS::StackName

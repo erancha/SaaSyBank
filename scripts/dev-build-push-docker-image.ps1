@@ -3,6 +3,9 @@ param (
    [string]$stackName,
 
    [Parameter(Mandatory = $true)]
+   [string]$accountId,
+
+   [Parameter(Mandatory = $true)]
    [string]$ecrRepositoryName,
 
    [Parameter(Mandatory = $true)]
@@ -11,7 +14,6 @@ param (
 
 # Configuration
 $awsRegion = aws configure get region
-$accountId = aws sts get-caller-identity --query "Account" --output text
 $imageTag = "latest"
 $ecrUri = "${accountId}.dkr.ecr.${awsRegion}.amazonaws.com"
 $ecrImageUri = "${ecrUri}/${ecrRepositoryName}:${imageTag}"

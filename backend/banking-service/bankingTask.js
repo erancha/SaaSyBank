@@ -48,8 +48,6 @@ bankingRouter.post('/account', async (req, res) => {
     return res.status(400).json({ message: 'Account ID and Tenant ID are required' });
   }
 
-  console.log(`Account creation requested - Account ID: ${accountId}, Initial Balance: ${initialBalance}, Tenant ID: ${tenantId}`);
-
   const client = await pool.connect();
   try {
     // Check if account already exists for the tenant
@@ -84,8 +82,6 @@ bankingRouter.get('/balance/:tenantId/:accountId', async (req, res) => {
     return res.status(400).json({ message: 'Both Tenant ID and Account ID are required' });
   }
 
-  console.log(`Balance check requested for Account ID: ${accountId}, Tenant ID: ${tenantId}`);
-
   const client = await pool.connect();
   try {
     const result = await client.query('SELECT balance FROM accounts WHERE account_id = $1 AND tenant_id = $2', [accountId, tenantId]);
@@ -114,8 +110,6 @@ bankingRouter.post('/deposit', async (req, res) => {
     return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
   }
 
-  console.log(`Deposit request received - Amount: ${amount}, Account ID: ${accountId}, Tenant ID: ${tenantId}`);
-
   const client = await pool.connect();
   try {
     const result = await client.query('UPDATE accounts SET balance = balance + $1 WHERE account_id = $2 AND tenant_id = $3 RETURNING *', [
@@ -143,8 +137,6 @@ bankingRouter.post('/withdraw', async (req, res) => {
     return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
   }
 
-  console.log(`Withdraw request received - Amount: ${amount}, Account ID: ${accountId}, Tenant ID: ${tenantId}`);
-
   const client = await pool.connect();
   try {
     const result = await client.query('UPDATE accounts SET balance = balance - $1 WHERE account_id = $2 AND tenant_id = $3 RETURNING *', [
@@ -171,10 +163,6 @@ bankingRouter.post('/transfer', async (req, res) => {
   if (!tenantId || !fromAccountId || !toAccountId || amount === undefined) {
     return res.status(400).json({ message: 'From Account ID, To Account ID, Tenant ID, and Amount are required' });
   }
-
-  console.log(
-    `Transfer request received - Amount: ${amount}, From Account ID: ${fromAccountId}, To Account ID: ${toAccountId}, Tenant ID: ${tenantId}`
-  );
 
   const client = await pool.connect();
   try {

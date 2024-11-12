@@ -18,7 +18,7 @@ if ($LASTEXITCODE -eq 0) {
 
     $projectFolder = (Get-Location).Path + "/.."
 
-    Write-Host "Skipping pg !" -ForegroundColor Yellow -BackgroundColor DarkGreen
+    Write-Host "Skipping the pg layer build !" -ForegroundColor Yellow -BackgroundColor DarkGreen
 
     # Set-Location "${projectFolder}/backend/layers/pg/nodejs/"
     # npm install
@@ -33,10 +33,12 @@ if ($LASTEXITCODE -eq 0) {
         $ecrBankingRepositoryName = "banking-repository"
         $bankingServiceName = "banking-service"
 
+        $accountId = aws sts get-caller-identity --query "Account" --output text
         Write-Host "Skipping docker build and push !" -ForegroundColor Yellow -BackgroundColor DarkGreen
-        $bankingDockerResults = @{ecrImageUri = "575491442067.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:latest"}
+        $bankingDockerResults = @{ecrImageUri = "${accountId}.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:latest"}
         # ./dev-build-push-docker-image.ps1 `
         #     -stackName $commonConstants.stackName `
+        #     -accountId $accountId `
         #     -ecrRepositoryName $ecrBankingRepositoryName `
         #     -serviceName $bankingServiceName
 

@@ -21,7 +21,7 @@ $commonConstants = ./common-constants.ps1
 # ./list-Subnets.ps1 -region $commonConstants.region
 
 Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Testing all HTTP requests deployed by the stack ..."
-./test-web-api.ps1
+./test-web-api.ps1 -parallelCount 5 -iterationsCount 10
 
 if (-not $deleteTask) {
    $validInput = $false

@@ -14,7 +14,7 @@ sam --version
 #     Secret type = Other type of secret
 #     Two Key/value pairs: username = <your username>, password = <your password>
 #     Secret name = /sb/rdscredentials
-# Replace your Secret ARN instead of 'arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ' in template.yaml.
+# Replace your Secret ARN instead of 'arn:aws:secretsmanager:eu-central-1:<<account id>>:secret:/sb/rdscredentials-T3ztmQ' in template.yaml.
 
 
 # ./dev-build-deploy.ps1
