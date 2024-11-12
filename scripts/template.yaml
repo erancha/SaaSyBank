@@ -50,8 +50,12 @@ Parameters:
     Description: Memory in MB for the container
   ECSDesiredCount:
     Type: Number
-    Default: 2
+    Default: 1
     Description: The number of instantiations of the specified task definition to place and keep running in your service.
+  ECSMaxCount:
+    Type: Number
+    Default: 5
+    Description: The maximal number of instantiations of the specified task definition to place and keep running in your service.
 
   AllowRDSPublicAccess:
     Type: String
@@ -572,7 +576,7 @@ Resources:
 
   BankingECSService:
     Type: AWS::ECS::Service
-    DependsOn: BankingALBListenerRule # This ensures the target group is associated with ALB via the listener rule
+    DependsOn: BankingALBListenerRule
     Properties:
       ServiceName: !Sub '${AWS::StackName}-${BankingServiceName}'
       Cluster: !Ref MyECSCluster
@@ -596,7 +600,52 @@ Resources:
       LoadBalancers:
         - ContainerName: 'banking-task'
           ContainerPort: !Ref ECSContainerPort
-          TargetGroupArn: !Ref BankingALBTG # the target group that the ALB will use to route traffic to the container instances
+          TargetGroupArn: !Ref BankingALBTG
+
+  # Auto Scaling resources
+  BankingECSServiceScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !Ref ECSMaxCount
+      MinCapacity: !Ref ECSDesiredCount
+      ResourceId: !Sub 'service/${MyECSCluster}/${AWS::StackName}-${BankingServiceName}'
+      RoleARN: !GetAtt MyAppAutoScalingRole.Arn
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ServiceNamespace: 'ecs'
+
+  BankingECSServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-banking-scaling-policy'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref BankingECSServiceScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70.0
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization # Metric to track
+        ScaleInCooldown: 60 # Time to wait in seconds after scaling in before another scale in
+        ScaleOutCooldown: 60 # Time to wait in seconds after scaling out before another scale out
+
+  MyAppAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: application-autoscaling.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AllowECSTaskScaling
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:UpdateService
+                  - ecs:DescribeServices
+                Resource: '*'
 
   #==========================================================================================================================================================
   # TODO: EKS (Kubernetes) with Fargate launch type for the same functionality (Balance, Deposit, Withdraw, Transfer).
@@ -661,7 +710,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: ../backend/sql-tables/
-      Handler: creation.handler
+      Handler: tablesCreation.handler
       Runtime: nodejs20.x
       Layers:
         - !Ref pgLayer

@@ -77,11 +77,14 @@ exports.handler = async (event) => {
     // 4. Display records count again
     const countQuery2 = 'SELECT COUNT(*) FROM accounts;';
     const countResult2 = await dbClient.query(countQuery2);
-    console.log('Records count after deletion:', countResult2.rows[0].count);
+    const finalRecordsCount = countResult2.rows[0].count;
+    console.log('Records count after deletion:', finalRecordsCount);
 
     return {
       statusCode: 200,
-      body: JSON.stringify('Database checked/created, table created, record added, and deleted successfully!'),
+      body: JSON.stringify(
+        `Database checked/created, table created, record added, and deleted successfully. Current records count: ${finalRecordsCount}.`
+      ),
     };
   } catch (error) {
     console.error('Error during database operations:', error);

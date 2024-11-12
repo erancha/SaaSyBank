@@ -33,12 +33,12 @@ if ($LASTEXITCODE -eq 0) {
         $ecrBankingRepositoryName = "banking-repository"
         $bankingServiceName = "banking-service"
 
-        # Write-Host "Skipping docker build and push !" -ForegroundColor Yellow -BackgroundColor DarkGreen
-        $bankingDockerResults = # @{ecrImageUri = "575491442067.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:latest"}
-        ./dev-build-push-docker-image.ps1 `
-            -stackName $commonConstants.stackName `
-            -ecrRepositoryName $ecrBankingRepositoryName `
-            -serviceName $bankingServiceName
+        Write-Host "Skipping docker build and push !" -ForegroundColor Yellow -BackgroundColor DarkGreen
+        $bankingDockerResults = @{ecrImageUri = "575491442067.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:latest"}
+        # ./dev-build-push-docker-image.ps1 `
+        #     -stackName $commonConstants.stackName `
+        #     -ecrRepositoryName $ecrBankingRepositoryName `
+        #     -serviceName $bankingServiceName
 
         $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
         Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Build completed. Deploying .."

@@ -673,7 +673,7 @@ backend/layers/pg/nodejs/node_modules/xtend/mutable.js
 backend/layers/pg/nodejs/node_modules/xtend/package.json
 backend/layers/pg/nodejs/node_modules/xtend/README.md
 backend/layers/pg/nodejs/node_modules/xtend/test.js
-scripts/.aws-sam/build/MyCreateTablesFunction/creation.js
+scripts/.aws-sam/build/MyCreateTablesFunction/tablesCreation.js
 scripts/.aws-sam/build/MyCreateTablesFunction/test-pg-local.js
 scripts/.aws-sam/build/MyCreateTablesFunction/test-pg-local.ps1
 backend/banking-service/node_modules/pg/LICENSE
@@ -829,3 +829,4 @@ backend/banking-service/node_modules/xtend/mutable.js
 backend/banking-service/node_modules/xtend/package.json
 backend/banking-service/node_modules/xtend/README.md
 backend/banking-service/node_modules/xtend/test.js
+scripts/.aws-sam/build/MyCreateTablesFunction/creation.js
