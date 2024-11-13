@@ -2,19 +2,19 @@
 
 ## Overview
 
-**Application Name**: SaasyBank.  
-**Functionality**: Balance, Deposit, withdraw, and transfer money between accounts.  
-**Deployable** as both a **single-tenant** and a **multi-tenant** SaaS application.  
-**Initial Users Count**: 1,000 (expected to grow rapidly).  
-**Service Level Agreement (SLA)**: Highest possible (TBD).  
-**Responsiveness**: High (end users should receive a response within 5 seconds or less).  
-**Frontend**: None in Phase 1 (Expected delivery: Postman JSON file).
+**Application Name**: SaasyBank  
+**Functionality**: Account creation, balance inquiries, deposits, withdrawals, and money transfers  
+**Deployment**: Single-tenant and multi-tenant SaaS  
+**Initial Users Count**: 1,000 (rapid growth expected), with ~50 concurrent users
+**SLA**: Highest possible (TBD)  
+**Responsiveness**: < 5 seconds response time  
+**Frontend**: None in Phase 1 (Postman JSON file for API testing)
 
 ---
 
 ## Architecture Diagram
 
-![SaasyBank Architecture Diagram](https://lucid.app/publicSegments/view/d1c61e72-64e2-41f4-ae11-c6661a6bf5e9/image.jpeg)link. -->
+![SaasyBank Architecture Diagram](https://lucid.app/publicSegments/view/d1c61e72-64e2-41f4-ae11-c6661a6bf5e9/image.jpeg)
 
 ---
 
@@ -22,81 +22,73 @@
 
 ### 1. **Frontend**
 
-- **Status**: None in Phase 1.
-- **Delivery**: Postman JSON file for API testing.
+- **Status**: Not available in Phase 1
+- **Delivery**: Postman JSON file
 
-### 2. **Backend Architecture**
-
-The backend will be hosted on AWS with the following components:
+### 2. **Backend Architecture on AWS**
 
 #### 2.1 **Application Load Balancer (ALB)**
 
-- **Purpose**: Distribute incoming API requests to the backend services.
-- **SLA**: Automatically scales to handle incoming traffic, ensuring high availability.
+- **Purpose**: Distribute API requests
+- **SLA**: Auto-scales for high availability
 
 #### 2.2 **Amazon Cognito**
 
-- **Purpose**: User authentication and management.
+- **Purpose**: User authentication and management
 
-#### 2.3 **ECS with Fargate Launch Type**
+#### 2.3 **ECS with Fargate**
 
-- Here’s a rephrased version:
-
-- **Objective**: Execute containerized applications to enable functionalities for checking account balances, making deposits, withdrawing funds, and transferring money.
-- **Deployment**: Managed using Amazon ECS (Elastic Container Service).
-- **Network**: Deployed in a private subnet for enhanced security.
+- **Objective**: Run containerized applications for banking functionalities
+- **Deployment**: Managed via Amazon ECS
+- **Network**: Deployed in a private subnet
 
 #### 2.4 **Amazon RDS with PostgreSQL**
 
-- **Purpose**: Store user account information and transaction details.
-- **Deployment**: Managed RDS instance in a private subnet.
-- **Backup and Recovery**: Automated backups enabled for data durability.
+- **Purpose**: Store user and transaction data
+- **Deployment**: Managed RDS instance in a private subnet
+- **Backup**: Automated backups enabled
 
 ### 3. **Deployment Flexibility**
 
-- The application will be deployable as both a **single-tenant** and a **multi-tenant** SaaS application.
-- **CloudFormation Template Parameter**: A parameter will be included in the CloudFormation template to specify the type of deployment (single-tenant or multi-tenant).
-  - **Single-Tenant Mode**: Each customer has their own isolated environment.
-  - **Multi-Tenant Mode**: Multiple customers share the same environment with data segregation.
+- **Modes**: Single-tenant (isolated environments) and multi-tenant (shared environments with data segregation)
+- **CloudFormation Parameter**: To specify deployment type
 
 ### 4. **Future Enhancements**
 
-In a later phase, the following services will be integrated for improved performance and scalability:
-
 #### 4.1 **Amazon CloudFront**
 
-- **Purpose**: Content delivery network (CDN) for better performance and lower latency for API requests.
+- **Purpose**: CDN for improved performance
 
 #### 4.2 **Amazon ElastiCache (Redis)**
 
-- **Purpose**: In-memory caching to reduce database load and speed up response times.
-- **Expected Usage**: Caching frequently accessed data (e.g., user session data, recent transactions).
+- **Purpose**: In-memory caching to enhance response times
+- **Usage**: Cache frequently accessed data (e.g., user sessions)
 
 ---
 
 ## Security Considerations
 
-- **Network Security**: Utilize private subnets for sensitive components (ECS and RDS).
-- **Data Security**: Enable encryption at rest and in transit for RDS and other sensitive data.
-- **Authentication**: Use Amazon Cognito for secure user management.
-- **Access Control**: Role-based access policies for AWS resources.
+- **Network**: Use private subnets for ECS and RDS
+- **Data**: Enable encryption at rest and in transit
+- **Authentication**: Amazon Cognito for user management
+- **Access Control**: Role-based policies for AWS resources
 
 ---
 
 ## Performance Metrics
 
-- **Response Time**: All API calls should respond within 5 seconds or less.
-- **Scalability**: The architecture should be capable of automatically scaling to support an increasing number of users.
+- **Response Time**: API calls < 5 seconds
+- **Scalability**: Architecture auto-scales for growing user base
 
 ---
 
 ## Monitoring and Logging
 
-- **CloudWatch**: Use Amazon CloudWatch for monitoring application performance and logging.
-- **Health Checks**: Configure ALB health checks for backend service availability.
+- **CloudWatch**: Monitor performance and log activities
+- **Health Checks**: Configure ALB health checks
 
 ---
 
 ## Summary
 
-The architecture for SaasyBank leverages AWS services to provide a scalable, secure, and highly available backend for financial transactions. The design accommodates the need for both single-tenant and multi-tenant deployment strategies, ensuring flexibility for growth and customer requirements. Initial phase focuses on building a robust backend with future enhancements planned for improved responsiveness and performance.
+SaasyBank's architecture utilizes AWS services for a scalable, secure, and highly available backend. It supports both single-tenant and multi-tenant deployments, focusing on a robust backend in the initial phase, with plans for future enhancements to improve responsiveness and performance.

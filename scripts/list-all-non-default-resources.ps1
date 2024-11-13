@@ -1,21 +1,16 @@
 Write-Host " $(Split-Path -Leaf $PSCommandPath) ..." -ForegroundColor White -BackgroundColor DarkBlue
 
+. ./get-ElapsedTimeFormatted.ps1
+$startTime = Get-Date
+
 # Define an array to hold the resource listing
 $nonDefaultResources = @()
-
-# Check EC2 Instances
-$ec2Instances = aws ec2 describe-instances --query "Reservations[*].Instances[?Tags[?Key=='Name']].{ID:InstanceId,Name:Tags[?Key=='Name'][0].Value}" --output json | ConvertFrom-Json
-foreach ($instance in $ec2Instances) {
-    if ($instance.Name -ne "Default") {
-        $nonDefaultResources += "EC2 Instance: $($instance.ID) - Name: $($instance.Name)"
-    }
-}
 
 # Check VPCs and filter out default VPCs
 $vpcs = aws ec2 describe-vpcs --query "Vpcs[?Tags[?Key=='Name']].{ID:VpcId, Name:Tags[?Key=='Name'].Value | [0], CidrBlock:CidrBlock}" --output json | ConvertFrom-Json
 foreach ($vpc in $vpcs) {
     if ($vpc.Name -and $vpc.Name -notlike "*!!! Default VPC !!!*") {
-        $nonDefaultResources += "VPC: $($vpc.ID) - Name: $($vpc.Name) - CIDR: $($vpc.CidrBlock)"
+        $nonDefaultResources += "VPC:         $($vpc.Name.PadRight(20)) : $($vpc.ID.PadRight(25)) , CIDR: $($vpc.CidrBlock)"
     }
 }
 
@@ -23,7 +18,7 @@ foreach ($vpc in $vpcs) {
 $subnets = aws ec2 describe-subnets --query "Subnets[?Tags[?Key=='Name']].{ID:SubnetId, Name:Tags[?Key=='Name'].Value | [0], VpcId:VpcId, CidrBlock:CidrBlock}" --output json | ConvertFrom-Json
 foreach ($subnet in $subnets) {
     if ($subnet.Name -and $subnet.Name -notlike "*Default*") {
-        $nonDefaultResources += "Subnet: $($subnet.ID) - Name: $($subnet.Name) - VPC ID: $($subnet.VpcId) - CIDR: $($subnet.CidrBlock)"
+        $nonDefaultResources += "Subnet:      $($subnet.Name.PadRight(20)) : $($subnet.ID.PadRight(25)) , VPC ID: $($subnet.VpcId) , CIDR: $($subnet.CidrBlock)"
     }
 }
 
@@ -31,7 +26,7 @@ foreach ($subnet in $subnets) {
 $routeTables = aws ec2 describe-route-tables --query "RouteTables[?Tags[?Key=='Name']].{ID:RouteTableId, Name:Tags[?Key=='Name'].Value | [0], VpcId:VpcId}" --output json | ConvertFrom-Json
 foreach ($rt in $routeTables) {
     if ($rt.Name -and $rt.Name -notlike "*!!! Default RTB !!!*") {
-        $nonDefaultResources += "Route Table: $($rt.ID) - Name: $($rt.Name) - VPC ID: $($rt.VpcId)"
+        $nonDefaultResources += "Route Table: $($rt.Name.PadRight(20)) : $($rt.ID.PadRight(25)) , VPC ID: $($rt.VpcId)"
     }
 }
 
@@ -50,7 +45,7 @@ foreach ($interfaceEndpoint in $interfaceEndpoints) {
 # Check Gateway VPC Endpoints
 $gatewayEndpoints = aws ec2 describe-vpc-endpoints --query "VpcEndpoints[?VpcEndpointType=='Gateway'].{ID:VpcEndpointId, ServiceName:ServiceName}" --output json | ConvertFrom-Json
 foreach ($gatewayEndpoint in $gatewayEndpoints) {
-    $nonDefaultResources += "Gateway VPC Endpoint: $($gatewayEndpoint.ID) - Service Name: $($gatewayEndpoint.ServiceName)"
+    $nonDefaultResources += "Gateway VPC Endpoint  : $($gatewayEndpoint.ID) - Service Name: $($gatewayEndpoint.ServiceName)"
 }
 
 # Check Internet Gateways and filter out default IGWs
@@ -64,7 +59,7 @@ foreach ($igw in $internetGateways) {
 # Check Security Groups
 $securityGroups = aws ec2 describe-security-groups --query "SecurityGroups[?GroupName!='default'].{ID:GroupId,Name:GroupName}" --output json | ConvertFrom-Json
 foreach ($sg in $securityGroups) {
-    $nonDefaultResources += "Security Group: $($sg.ID) - Name: $($sg.Name)"
+    $nonDefaultResources += "Security Group: $($sg.Name.PadRight(40)) : $($sg.ID)"
 }
 
 # Check Network ACLs
@@ -76,21 +71,29 @@ foreach ($acl in $nacls) {
 # Check IAM Policies
 $policies = aws iam list-policies --query "Policies[?DefaultVersionId==null].{ID:PolicyId,Name:PolicyName}" --output json | ConvertFrom-Json
 foreach ($policy in $policies) {
-    $nonDefaultResources += "IAM Policy: $($policy.ID) - Name: $($policy.Name)"
+    $nonDefaultResources += "IAM Policy: $($policy.Name.PadRight(20)) : $($policy.ID)"
 }
 
 # Check IAM Roles
 $roles = aws iam list-roles --query "Roles[?RoleName!='default'].{Name:RoleName,ID:RoleId}" --output json | ConvertFrom-Json
 foreach ($role in $roles) {
     if (-not $role.Name.StartsWith("AWS") -and -not $role.Name.StartsWith("ec2-")) {
-        $nonDefaultResources += "IAM Role: $($role.ID) - Name: $($role.Name)"
+        $nonDefaultResources += "IAM Role: $($role.Name.PadRight(55)) : $($role.ID)"
     }
 }
 
 # Check Load Balancers
 $loadBalancers = aws elbv2 describe-load-balancers --query "LoadBalancers[?Scheme=='internal'].{ID:LoadBalancerArn,Name:LoadBalancerName}" --output json | ConvertFrom-Json
 foreach ($lb in $loadBalancers) {
-    $nonDefaultResources += "Load Balancer: $($lb.ID) - Name: $($lb.Name)"
+    $nonDefaultResources += "Load Balancer: $($lb.Name.PadRight(20)) : $($lb.ID)"
+}
+
+# Check EC2 Instances
+$ec2Instances = aws ec2 describe-instances --query "Reservations[*].Instances[?Tags[?Key=='Name']].{ID:InstanceId,Name:Tags[?Key=='Name'][0].Value}" --output json | ConvertFrom-Json
+foreach ($instance in $ec2Instances) {
+    if ($instance.Name -ne "Default") {
+        $nonDefaultResources += "EC2 Instance: $($instance.Name.PadRight(25)) : $($instance.ID)"
+    }
 }
 
 # Check RDS Instances
@@ -108,7 +111,7 @@ foreach ($table in $dynamoDBTables) {
 # Check Secrets Manager Secrets
 $secrets = aws secretsmanager list-secrets --query "SecretList[?Name!='default'].{ID: ARN, Name: Name}" --output json | ConvertFrom-Json
 foreach ($secret in $secrets) {
-    $nonDefaultResources += "Secret: $($secret.ID) - Name: $($secret.Name)"
+    $nonDefaultResources += "Secret: $($secret.Name.PadRight(25)) : $($secret.ID)"
 }
 
 $kmsKeys = aws kms list-keys --output json | ConvertFrom-Json
@@ -150,20 +153,25 @@ foreach ($cluster in $elasticacheClusters) {
 # Check API Gateways
 $apiGateways = aws apigateway get-rest-apis --query "items[?name!='default'].{ID:id,Name:name}" --output json | ConvertFrom-Json
 foreach ($api in $apiGateways) {
-    $nonDefaultResources += "API Gateway: $($api.ID) - Name: $($api.Name)"
+    $nonDefaultResources += "REST API Gateway     : $($api.Name.PadRight(20)) : $($api.ID)"
 }
 $webSocketApis = aws apigatewayv2 get-apis --query "Items[?Name!='default'].{ID:ApiId,Name:Name}" --output json | ConvertFrom-Json
 foreach ($api in $webSocketApis) {
-    $nonDefaultResources += "WebSocket API: $($api.ID) - Name: $($api.Name)"
+    $nonDefaultResources += "WebSocket API Gateway: $($api.Name.PadRight(20)) : $($api.ID)"
 }
-# Check Cognito User and Identity Pools
+
+# Check Cognito User Pools
 $cognitoPools = aws cognito-idp list-user-pools --max-results 60 --query "UserPools[?Name!='default'].{ID:Id,Name:Name}" --output json | ConvertFrom-Json
 foreach ($pool in $cognitoPools) {
-    $nonDefaultResources += "Cognito User Pool: $($pool.ID) - Name: $($pool.Name)"
+    # Get the domain for each user pool
+    $domainName = aws cognito-idp describe-user-pool --user-pool-id $pool.ID --query "UserPool.Domain" --output json | ConvertFrom-Json
+    $nonDefaultResources += "Cognito User Pool    : $($pool.Name.PadRight(20)) : $($pool.ID) , domain: https://$domainName.auth.eu-central-1.amazoncognito.com"
 }
+
+# Check Cognito Identity Pools
 $identityPools = aws cognito-identity list-identity-pools --max-results 60 --query "IdentityPools[?IdentityPoolName!='default'].{ID:IdentityPoolId,Name:IdentityPoolName}" --output json | ConvertFrom-Json
 foreach ($pool in $identityPools) {
-    $nonDefaultResources += "Identity Pool: $($pool.ID) - Name: $($pool.Name)"
+    $nonDefaultResources += "Cognito Identity Pool: $($pool.Name.PadRight(20)) : $($pool.ID)"
 }
 
 # Check S3 Buckets
@@ -181,7 +189,25 @@ foreach ($distribution in $cloudFrontDistributions) {
 # Check Lambda Functions
 $lambdaFunctions = aws lambda list-functions --query "Functions[?FunctionName!='default'].{Name:FunctionName,ARN:FunctionArn}" --output json | ConvertFrom-Json
 foreach ($function in $lambdaFunctions) {
-    $nonDefaultResources += "Lambda Function: $($function.ARN) - Name: $($function.Name)"
+    $nonDefaultResources += "Lambda Function: $($function.Name.PadRight(45)) : $($function.ARN)"
+}
+
+# Check Lambda Layers
+$lambdaLayers = aws lambda list-layers --query "Layers[?LayerName!='default'].{ARN:LayerArn,Name:LayerName}" --output json | ConvertFrom-Json
+foreach ($layer in $lambdaLayers) {
+    $nonDefaultResources += "Lambda Layer: $($layer.Name.PadRight(25)) : $($layer.ARN)"
+}
+
+# Check CloudFormation Stacks
+$cloudFormationStacks = aws cloudformation list-stacks --query "StackSummaries[?StackStatus!='DELETE_COMPLETE'].{ID:StackId,Name:StackName}" --output json | ConvertFrom-Json
+foreach ($stack in $cloudFormationStacks) {
+    $nonDefaultResources += "CloudFormation Stack: $($stack.Name.PadRight(30)) : $($stack.ID)"
+}
+
+# Check CloudWatch Dashboards
+$cloudWatchDashboards = aws cloudwatch list-dashboards --query "DashboardEntries[?DashboardName!='default'].{Name:DashboardName}" --output json | ConvertFrom-Json
+foreach ($dashboard in $cloudWatchDashboards) {
+    $nonDefaultResources += "CloudWatch Dashboard: $($dashboard.Name)"
 }
 
 # Output the non-default resources
@@ -190,3 +216,6 @@ $nonDefaultResources | ForEach-Object -Begin { $index = 1 } -Process {
     Write-Host ("#{0} : {1}" -f $paddedIndex, $_)
     $index++
 }
+
+$formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
+Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Completed."

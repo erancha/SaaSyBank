@@ -7,16 +7,17 @@ Parameters:
     Type: String
     Description: 'ID of an existing VPC (leave empty to create a new one)'
     Default: 'vpc-08016eb77e7ac9962'
-  ExistingRouteTableId:
+
+  ExistingUserPoolId:
     Type: String
-    Description: 'ID of an existing route table (leave empty to create a new one)'
+    Description: Existing Cognito User Pool ID.
+  ExistingIdentityPoolId:
+    Type: String
+    Description: Existing Cognito Identity Pool ID.
+  ExistingCognitoDomain:
+    Description: 'Existing Cognito Domain.'
+    Type: String
     Default: ''
-  # ExistingUserPoolId:
-  #   Type: String
-  #   Description: Existing Cognito User Pool ID.
-  # ExistingIdentityPoolId:
-  #   Type: String
-  #   Description: Existing Cognito Identity Pool ID.
 
   LogGroupName:
     Type: String
@@ -64,7 +65,6 @@ Parameters:
     Description: "Set to 'true' to allow public access to the RDS instance (recommended only for development)."
 
 Conditions:
-  CreateRouteTable: !Equals [!Ref ExistingRouteTableId, '']
   AllowRDSPublicAccessCondition: !Equals
     - !Ref AllowRDSPublicAccess
     - 'true'
@@ -102,7 +102,6 @@ Resources:
 
   MyRouteTable:
     Type: AWS::EC2::RouteTable
-    Condition: CreateRouteTable
     Properties:
       VpcId: !Ref ExistingVpcId
       Tags:
@@ -114,7 +113,7 @@ Resources:
     # Responses to outbound requests are allowed back to those resources, effectively making the interaction appear bidirectional, as long as the security groups (SG) and network ACLs do not block that traffic.
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+      RouteTableId: !Ref MyRouteTable
       DestinationCidrBlock: '0.0.0.0/0'
       GatewayId: !Ref MyInternetGateway
 
@@ -143,12 +142,12 @@ Resources:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref MyPublicSubnet1
-      RouteTableId: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+      RouteTableId: !Ref MyRouteTable
   AssociateMyPublicSubnet2ToMyRTB:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref MyPublicSubnet2
-      RouteTableId: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+      RouteTableId: !Ref MyRouteTable
 
   MyALBSG:
     Type: AWS::EC2::SecurityGroup
@@ -212,7 +211,6 @@ Resources:
   #       - !Ref MyECRVPCEndpointsSG
   # S3Endpoint:
   #   Type: AWS::EC2::VPCEndpoint
-  #   Condition: CreateRouteTable
   #   Properties:
   #     VpcId: !Ref ExistingVpcId
   #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
@@ -224,12 +222,12 @@ Resources:
   #   Type: AWS::EC2::SubnetRouteTableAssociation
   #   Properties:
   #     SubnetId: !Ref MyECSPrivateSubnet1
-  #     RouteTableId: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+  #     RouteTableId: !Ref MyRouteTable
   # AssociateMyECSPrivateSubnet2ToMyRTB: # to access the vpc endpoints above (maybe only the S3 gateway endpoint?)
   #   Type: AWS::EC2::SubnetRouteTableAssociation
   #   Properties:
   #     SubnetId: !Ref MyECSPrivateSubnet2
-  #     RouteTableId: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+  #     RouteTableId: !Ref MyRouteTable
 
   # MyECRVPCEndpointsSG: # Security Group for VPC Endpoints
   #   Type: AWS::EC2::SecurityGroup
@@ -377,15 +375,26 @@ Resources:
   MyTimeLambdaALBListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
+      Priority: 4
       Actions:
+        # - Type: authenticate-cognito
+        #   Order: 1
+        #   AuthenticateCognitoConfig:
+        #     UserPoolArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${ExistingUserPoolId}
+        #     UserPoolClientId: !Ref ALBCognitoUserPoolClient
+        #     UserPoolDomain: !Ref ExistingCognitoDomain
+        #     OnUnauthenticatedRequest: authenticate
+        #     Scope: openid
+        #     SessionCookieName: AWSELBAuthSessionCookie
+        #     SessionTimeout: 3600
         - Type: forward
+          Order: 2
           TargetGroupArn: !Ref MyTimeLambdaTG
       Conditions:
         - Field: path-pattern
           Values:
             - /api/time
       ListenerArn: !Ref MyALBListener
-      Priority: 3
 
   MyTimeLambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -422,15 +431,26 @@ Resources:
   MyTablesLambdaALBListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
+      Priority: 3
       Actions:
+        # - Type: authenticate-cognito
+        #   Order: 1
+        #   AuthenticateCognitoConfig:
+        #     UserPoolArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${ExistingUserPoolId}
+        #     UserPoolClientId: !Ref ALBCognitoUserPoolClient
+        #     UserPoolDomain: !Ref ExistingCognitoDomain
+        #     OnUnauthenticatedRequest: authenticate
+        #     Scope: openid
+        #     SessionCookieName: AWSELBAuthSessionCookie
+        #     SessionTimeout: 3600
         - Type: forward
+          Order: 2
           TargetGroupArn: !Ref MyTablesLambdaTG
       Conditions:
         - Field: path-pattern
           Values:
             - /api/tables
       ListenerArn: !Ref MyALBListener
-      Priority: 2
 
   MyTablesLambdaInvokePermission:
     Type: AWS::Lambda::Permission
@@ -484,7 +504,56 @@ Resources:
   #         ValidationDomain: !GetAtt MyALB.DNSName
 
   #==========================================================================================================================================================
-  # ECS with Fargate launch type for the following functionality: Balance, Deposit, Withdraw, Transfer money.
+  # Cognito
+  #==========================================================================================================================================================
+  # ALBCognitoUserPoolClient: # TODO: Handle after MyALBCertificate (Internal error reported from downstream service during operation 'Actions of type 'authenticate-cognito' are supported only on HTTPS listeners).
+  #   Type: AWS::Cognito::UserPoolClient
+  #   Properties:
+  #     UserPoolId: !Ref ExistingUserPoolId
+  #     ClientName: !Sub ${AWS::StackName}-alb-client
+  #     GenerateSecret: true
+  #     AllowedOAuthFlowsUserPoolClient: true
+  #     AllowedOAuthFlows:
+  #       - code
+  #     AllowedOAuthScopes:
+  #       - openid
+  #       - email
+  #       - profile
+  #     CallbackURLs:
+  #       - !Sub https://${MyALB.DNSName}/oauth2/idpresponse
+  #     SupportedIdentityProviders:
+  #       - Google
+  #     PreventUserExistenceErrors: ENABLED
+
+  # MyALBAuthenticator:
+  #   Type: AWS::ElasticLoadBalancingV2::ListenerRule
+  #   Properties:
+  #     ListenerArn: !Ref MyALBListener
+  #     Priority: 1
+  #     Conditions:
+  #       - Field: path-pattern
+  #         Values:
+  #           - /oauth2/*
+  #     Actions:
+  #       - Type: authenticate-cognito
+  #         Order: 1
+  #         AuthenticateCognitoConfig:
+  #           UserPoolArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${ExistingUserPoolId}
+  #           UserPoolClientId: !Ref ALBCognitoUserPoolClient
+  #           UserPoolDomain: !Ref ExistingCognitoDomain
+  #           OnUnauthenticatedRequest: authenticate
+  #           Scope: openid
+  #           SessionCookieName: AWSELBAuthSessionCookie
+  #           SessionTimeout: 3600
+  #       - Type: fixed-response
+  #         Order: 2
+  #         FixedResponseConfig:
+  #           StatusCode: '200'
+  #           ContentType: text/plain
+  #           MessageBody: 'Authenticated'
+
+  #==========================================================================================================================================================
+  # Fargate for ECS: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html
   #==========================================================================================================================================================
   MyECSCluster:
     Type: AWS::ECS::Cluster
@@ -538,14 +607,25 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       ListenerArn: !Ref MyALBListener
+      Priority: 2
       Conditions:
         - Field: path-pattern
           Values:
             - /api/banking/*
       Actions:
+        # - Type: authenticate-cognito
+        #   Order: 1
+        #   AuthenticateCognitoConfig:
+        #     UserPoolArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${ExistingUserPoolId}
+        #     UserPoolClientId: !Ref ALBCognitoUserPoolClient
+        #     UserPoolDomain: !Ref ExistingCognitoDomain
+        #     OnUnauthenticatedRequest: authenticate
+        #     Scope: openid
+        #     SessionCookieName: AWSELBAuthSessionCookie
+        #     SessionTimeout: 3600
         - Type: forward
+          Order: 2
           TargetGroupArn: !Ref BankingALBTG
-      Priority: 1
 
   BankingECSTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -611,7 +691,7 @@ Resources:
           TargetGroupArn: !Ref BankingALBTG
 
   #==========================================================================================================================================================
-  # TODO: EKS (Kubernetes) with Fargate launch type for the same functionality (Balance, Deposit, Withdraw, Transfer).
+  # TODO: Alternate EKS (Kubernetes) with Fargate deployment: https://docs.aws.amazon.com/eks/latest/userguide/fargate.html.
   #==========================================================================================================================================================
 
   #==========================================================================================================================================================
@@ -1211,7 +1291,7 @@ Resources:
 Outputs:
   MyRouteTableId:
     Description: 'The ID of the route table associated with the VPC for this application '
-    Value: !If [CreateRouteTable, !Ref MyRouteTable, !Ref ExistingRouteTableId]
+    Value: !Ref MyRouteTable
 
   PublicSubnet1Id:
     Description: 'ID of the first public subnet'
@@ -1225,13 +1305,13 @@ Outputs:
     Description: 'ID of the ALB Security Group'
     Value: !Ref MyALBSG
 
-  ECSSecurityGroupId:
-    Description: 'ID of the ECS Security Group'
-    Value: !Ref MyECSServicesSG
-
   LoadBalancerURL:
     Description: 'LoadBalancer URL'
     Value: !Sub 'http://${MyALB.DNSName}'
+
+  ECSSecurityGroupId:
+    Description: 'ID of the ECS Security Group'
+    Value: !Ref MyECSServicesSG
 
   ECSExecutionRoleArn:
     Description: 'ARN of the ECS Execution Role'

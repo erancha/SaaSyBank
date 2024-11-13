@@ -18,8 +18,7 @@ if ($LASTEXITCODE -eq 0) {
 
     $projectFolder = (Get-Location).Path + "/.."
 
-    Write-Host "Skipping the pg layer build !" -ForegroundColor Yellow -BackgroundColor DarkGreen
-
+    Write-Host "Skipping postgresql layer build !" -ForegroundColor Yellow -BackgroundColor DarkGreen
     # Set-Location "${projectFolder}/backend/layers/pg/nodejs/"
     # npm install
     # Set-Location ..
@@ -50,12 +49,12 @@ if ($LASTEXITCODE -eq 0) {
             $allowRDSPublicAccess = 'true'
         }
         $parameterOverrides = @(
-            # "ExistingNotesEncryptionKeyId='d0efc261-b71d-4f5c-9686-9876cc664243'",
-            # "ExistingUserPoolId='eu-central-1_OHq1aZYju'",
-            # "ExistingIdentityPoolId='eu-central-1:e9f848f2-a3ed-43f9-8ddb-833ca34233ba'",
-            # "ExistingElasticacheRedisClusterAddress='en-elasticache-redis-cluster.hz2zez.0001.euc1.cache.amazonaws.com:6379'",
             "ExistingVpcId='vpc-08016eb77e7ac9962'",
-            # "ExistingRouteTableId='rtb-!!!!!!!!!!!!!!'",
+            "ExistingUserPoolId='eu-central-1_OHq1aZYju'",
+            "ExistingIdentityPoolId='eu-central-1:e9f848f2-a3ed-43f9-8ddb-833ca34233ba'",
+            "ExistingCognitoDomain='ena-575491442067.auth.eu-central-1.amazoncognito.com'",
+            # "ExistingNotesEncryptionKeyId='d0efc261-b71d-4f5c-9686-9876cc664243'",
+            # "ExistingElasticacheRedisClusterAddress='en-elasticache-redis-cluster.hz2zez.0001.euc1.cache.amazonaws.com:6379'",
             "BankingServiceName='$bankingServiceName'",
             "BankingTaskEcrImageUri='$($bankingDockerResults.ecrImageUri)'",
             "AllowRDSPublicAccess='$allowRDSPublicAccess'"
