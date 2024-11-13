@@ -6,10 +6,12 @@
 **Deployment**: Single-tenant or multi-tenant SaaS.  
 **Initial Users Count**: 1,000 (rapid growth expected), with ~50 concurrent users.  
 **SLA**:
+
 - **Uptime Guarantee**:
   At least 99.9% uptime (this translates to about 8.76 hours of downtime per year).
 - **Response Time**:
   Responsiveness of less than 5 seconds for API calls.
+
 **Frontend**: N/A (a Postman collection is provided for the REST API).
 
 <small>**Note**: This is a deployable AWS architecture exercise.</small>
@@ -18,7 +20,7 @@
 
 ## Architecture Diagram
 
-![SaasyBank Architecture Diagram](https://lucid.app/publicSegments/view/bb6c7c85-d136-4819-8398-8f4626df6163/image.jpeg)
+![Architecture Diagram](https://lucid.app/publicSegments/view/bb6c7c85-d136-4819-8398-8f4626df6163/image.jpeg)
 
 ---
 
