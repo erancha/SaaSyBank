@@ -2,19 +2,26 @@
 
 ## Overview
 
-**Application Name**: SaasyBank  
-**Functionality**: Account creation, balance inquiries, deposits, withdrawals, and money transfers  
-**Deployment**: Single-tenant and multi-tenant SaaS  
-**Initial Users Count**: 1,000 (rapid growth expected), with ~50 concurrent users
-**SLA**: Highest possible (TBD)  
-**Responsiveness**: < 5 seconds response time  
-**Frontend**: None in Phase 1 (Postman JSON file for API testing)
+**Application Name**: SaasyBank.  
+**Functionality**: Account creation, balance inquiries, deposits, withdrawals, and money transfers.  
+**Deployment**: Single-tenant or multi-tenant SaaS.  
+**Initial Users Count**: 1,000 (rapid growth expected), with ~50 concurrent users.  
+**SLA**:
+
+- **Uptime Guarantee**:
+  At least 99.9% uptime (this translates to about 8.76 hours of downtime per year).
+- **Response Time**:
+  Responsiveness of less than 5 seconds for API calls.
+
+**Frontend**: N/A (a Postman collection is provided for the REST API).
+
+<small>**Note**: This is a deployable AWS architecture exercise.</small>
 
 ---
 
 ## Architecture Diagram
 
-![SaasyBank Architecture Diagram](https://lucid.app/publicSegments/view/d1c61e72-64e2-41f4-ae11-c6661a6bf5e9/image.jpeg)
+![SaasyBank Architecture Diagram](https://lucid.app/publicSegments/view/bb6c7c85-d136-4819-8398-8f4626df6163/image.jpeg)
 
 ---
 
@@ -23,7 +30,7 @@
 ### 1. **Frontend**
 
 - **Status**: Not available in Phase 1
-- **Delivery**: Postman JSON file
+- **Delivery**: Postman collection
 
 ### 2. **Backend Architecture on AWS**
 
@@ -35,17 +42,18 @@
 #### 2.2 **Amazon Cognito**
 
 - **Purpose**: User authentication and management
+- **Schedule**: Phase 2
 
 #### 2.3 **ECS with Fargate**
 
 - **Objective**: Run containerized applications for banking functionalities
 - **Deployment**: Managed via Amazon ECS
-- **Network**: Deployed in a private subnet
+- **Network**: Deployed in private subnets
 
 #### 2.4 **Amazon RDS with PostgreSQL**
 
-- **Purpose**: Store user and transaction data
-- **Deployment**: Managed RDS instance in a private subnet
+- **Purpose**: Store accounts data
+- **Deployment**: Managed RDS instance in private subnets
 - **Backup**: Automated backups enabled
 
 ### 3. **Deployment Flexibility**
@@ -58,11 +66,13 @@
 #### 4.1 **Amazon CloudFront**
 
 - **Purpose**: CDN for improved performance
+- **Schedule**: Phase 2
 
 #### 4.2 **Amazon ElastiCache (Redis)**
 
 - **Purpose**: In-memory caching to enhance response times
 - **Usage**: Cache frequently accessed data (e.g., user sessions)
+- **Schedule**: Phase 2
 
 ---
 
