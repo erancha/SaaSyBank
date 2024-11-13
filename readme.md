@@ -1,4 +1,4 @@
-# High-Level Design (HLD) Document for SaasyBank
+# High-Level Design (HLD) Document for SaaSyBank
 
 ## Overview
 
@@ -7,12 +7,10 @@
 **Deployment**: Single-tenant or multi-tenant SaaS.  
 **Initial Users Count**: 1,000 (rapid growth expected), with ~50 concurrent users.  
 **SLA**:
-
 - **Uptime Guarantee**:
   At least 99.9% uptime (this translates to about 8.76 hours of downtime per year).
 - **Response Time**:
   Responsiveness of less than 5 seconds for API calls.
-
 **Frontend**: N/A (a Postman collection is provided for the REST API).
 
 <small>**Note**: This is a deployable AWS architecture exercise.</small>
@@ -101,4 +99,4 @@
 
 ## Summary
 
-SaasyBank's architecture utilizes AWS services for a scalable, secure, and highly available backend. It supports both single-tenant and multi-tenant deployments, focusing on a robust backend in the initial phase, with plans for future enhancements to improve responsiveness and performance.
+SaaSyBank's architecture utilizes AWS services for a scalable, secure, and highly available backend. It supports both single-tenant and multi-tenant deployments, focusing on a robust backend in the initial phase, with plans for future enhancements to improve responsiveness and performance.
