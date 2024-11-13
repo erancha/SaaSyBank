@@ -310,7 +310,7 @@ Resources:
         # - IpProtocol: tcp
         #   FromPort: 5432
         #   ToPort: 5432
-        #   CidrIp: 149.106.249.221/32 # TODO: For testing purpose !
+        #   CidrIp: 149.106.249.221/32
 
   MyECSEgressRule:
     Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ECS to Allow Traffic to RDS

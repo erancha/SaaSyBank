@@ -9,7 +9,7 @@ exports.handler = async (event) => {
     password: process.env.DB_PASSWORD,
     port: 5432,
     ssl: {
-      rejectUnauthorized: false, // TODO: Use this only for development; set to true in production.
+      rejectUnauthorized: false, // TODO: Handle SSL before production!
     },
   };
 
