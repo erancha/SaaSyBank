@@ -2,7 +2,6 @@
 
 ## Overview
 
-**Application Name**: SaasyBank.  
 **Functionality**: Account creation, balance inquiries, deposits, withdrawals, and money transfers.  
 **Deployment**: Single-tenant or multi-tenant SaaS.  
 **Initial Users Count**: 1,000 (rapid growth expected), with ~50 concurrent users.  
