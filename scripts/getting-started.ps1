@@ -9,12 +9,19 @@ aws --version
 # $env:PATH = "C:\Program Files\Amazon\AWSSAMCLI\bin;" + $env:PATH
 sam --version
 
+# $dockerInstallerUrl = "https://desktop.docker.com/win/stable/Docker%20Desktop%20Installer.exe"
+# $installerPath = "$env:TEMP\DockerDesktopInstaller.exe"
+# Invoke-WebRequest -Uri $dockerInstallerUrl -OutFile $installerPath
+# Start-Process -FilePath $installerPath -ArgumentList "install" -Wait
+# Optionally, add Docker to the PATH if required (usually not needed as the installer takes care of this)
+# $env:PATH += ";C:\Program Files\Docker\Docker\resources\bin"
+docker --version
 
-# Create a secret: AWS Secrets Manager > Secrets > Store a new secret:
+# Create a secret: https://aws.amazon.com/secrets-manager/ > Secrets > Store a new secret:
 #     Secret type = Other type of secret
-#     Two Key/value pairs: username = <your username>, password = <your password>
+#     Two Key/value pairs: username = <your username>, password = <your password> (for example: username = mypguser1234, password = mypgpass1234!)
 #     Secret name = /sb/rdscredentials
-# Replace your Secret ARN instead of 'arn:aws:secretsmanager:eu-central-1:<<account id>>:secret:/sb/rdscredentials-T3ztmQ' in template.yaml.
+# Replace your Secret ARN instead of 'arn:aws:secretsmanager${AWS::Region}:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ' in template.yaml.
 
 
 # ./dev-build-deploy.ps1

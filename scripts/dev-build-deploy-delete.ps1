@@ -41,8 +41,8 @@ if ($deleteTask) {
 
    $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
    Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Deleting stack '$($commonConstants.stackName)' ..."
-   aws cloudformation delete-stack --stack-name $commonConstants.stackName
-   aws cloudformation wait stack-delete-complete --stack-name $commonConstants.stackName
+   aws cloudformation delete-stack --stack-name $commonConstants.stackName --region $commonConstants.region
+   aws cloudformation wait stack-delete-complete --stack-name $commonConstants.stackName --region $commonConstants.region
 }
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime

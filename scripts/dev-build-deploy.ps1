@@ -33,13 +33,12 @@ if ($LASTEXITCODE -eq 0) {
         $bankingServiceName = "banking-service"
 
         $accountId = aws sts get-caller-identity --query "Account" --output text
-        Write-Host "Skipping docker build and push !" -ForegroundColor Yellow -BackgroundColor DarkGreen
-        $bankingDockerResults = @{ecrImageUri = "${accountId}.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:latest"}
-        # ./dev-build-push-docker-image.ps1 `
-        #     -stackName $commonConstants.stackName `
-        #     -accountId $accountId `
-        #     -ecrRepositoryName $ecrBankingRepositoryName `
-        #     -serviceName $bankingServiceName
+        # Write-Host "Skipping docker build and push !" -ForegroundColor Yellow -BackgroundColor DarkGreen
+        $bankingDockerResults = # @{ecrImageUri = "${accountId}.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:latest"}
+        ./dev-build-push-docker-image.ps1 `
+            -accountId $accountId `
+            -ecrRepositoryName $ecrBankingRepositoryName `
+            -serviceName $bankingServiceName
 
         $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
         Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Build completed. Deploying .."
@@ -49,10 +48,10 @@ if ($LASTEXITCODE -eq 0) {
             $allowRDSPublicAccess = 'true'
         }
         $parameterOverrides = @(
-            "ExistingVpcId='vpc-08016eb77e7ac9962'",
-            "ExistingUserPoolId='eu-central-1_OHq1aZYju'",
-            "ExistingIdentityPoolId='eu-central-1:e9f848f2-a3ed-43f9-8ddb-833ca34233ba'",
-            "ExistingCognitoDomain='ena-575491442067.auth.eu-central-1.amazoncognito.com'",
+            # "ExistingVpcId='vpc-08016eb77e7ac9962'",
+            # "ExistingUserPoolId='eu-central-1_OHq1aZYju'",
+            # "ExistingIdentityPoolId='eu-central-1:e9f848f2-a3ed-43f9-8ddb-833ca34233ba'",
+            # "ExistingCognitoDomain='ena-575491442067.auth.eu-central-1.amazoncognito.com'",
             # "ExistingNotesEncryptionKeyId='d0efc261-b71d-4f5c-9686-9876cc664243'",
             # "ExistingElasticacheRedisClusterAddress='en-elasticache-redis-cluster.hz2zez.0001.euc1.cache.amazonaws.com:6379'",
             "BankingServiceName='$bankingServiceName'",
