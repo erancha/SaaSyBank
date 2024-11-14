@@ -6,18 +6,22 @@ Parameters:
   ExistingVpcId:
     Type: String
     Description: 'ID of an existing VPC (leave empty to create a new one)'
-    Default: 'vpc-08016eb77e7ac9962'
-
-  ExistingUserPoolId:
-    Type: String
-    Description: Existing Cognito User Pool ID.
-  ExistingIdentityPoolId:
-    Type: String
-    Description: Existing Cognito Identity Pool ID.
-  ExistingCognitoDomain:
-    Description: 'Existing Cognito Domain.'
-    Type: String
     Default: ''
+  VpcCidrBlock:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: 'The CIDR block for the VPC'
+
+  # ExistingUserPoolId:
+  #   Type: String
+  #   Description: Existing Cognito User Pool ID.
+  # ExistingIdentityPoolId:
+  #   Type: String
+  #   Description: Existing Cognito Identity Pool ID.
+  # ExistingCognitoDomain:
+  #   Description: 'Existing Cognito Domain.'
+  #   Type: String
+  #   Default: ''
 
   LogGroupName:
     Type: String
@@ -65,6 +69,7 @@ Parameters:
     Description: "Set to 'true' to allow public access to the RDS instance (recommended only for development)."
 
 Conditions:
+  CreateVpc: !Equals [!Ref ExistingVpcId, '']
   AllowRDSPublicAccessCondition: !Equals
     - !Ref AllowRDSPublicAccess
     - 'true'
@@ -85,6 +90,19 @@ Resources:
   #   The security group for ECS (MyECSServicesSG) must allow traffic on the port your container is listening to (e.g., 8080).
   #==========================================================================================================================================================
 
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Condition: CreateVpc
+    Properties:
+      CidrBlock: !Ref VpcCidrBlock
+      EnableDnsHostnames: true # Added to enable DNS support and hostnames in the VPC.
+      EnableDnsSupport: true # These settings are crucial for the private DNS feature of VPC endpoints to function properly. They allow your Lambda functions to resolve the AWS service endpoints to private IP addresses within your VPC.
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC'
+        - Key: MainRouteTable
+          Value: !Sub '${AWS::StackName}-MainRTB'
+
   # Public (ALB)
   #-------------
   MyInternetGateway:
@@ -97,13 +115,13 @@ Resources:
   AttachMyIGWToMyVPC:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
-      VpcId: !Ref ExistingVpcId
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       InternetGatewayId: !Ref MyInternetGateway
 
   MyRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref ExistingVpcId
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-RTB'
@@ -120,7 +138,7 @@ Resources:
   MyPublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref ExistingVpcId
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       CidrBlock: 10.0.3.0/24
       AvailabilityZone: !Select [0, !GetAZs '']
       MapPublicIpOnLaunch: true
@@ -130,7 +148,7 @@ Resources:
   MyPublicSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref ExistingVpcId
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       CidrBlock: 10.0.4.0/24
       AvailabilityZone: !Select [1, !GetAZs '']
       MapPublicIpOnLaunch: true
@@ -156,7 +174,7 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-MyALBSG'
-      VpcId: !Ref ExistingVpcId
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80 # 443 TODO: Handle SSL before production!
@@ -168,7 +186,7 @@ Resources:
   # MyECSPrivateSubnet1:
   #   Type: AWS::EC2::Subnet
   #   Properties:
-  #     VpcId: !Ref ExistingVpcId
+  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
   #     CidrBlock: 10.0.5.0/24
   #     AvailabilityZone: !Select [0, !GetAZs '']
   #     Tags:
@@ -177,7 +195,7 @@ Resources:
   # MyECSPrivateSubnet2:
   #   Type: AWS::EC2::Subnet
   #   Properties:
-  #     VpcId: !Ref ExistingVpcId
+  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
   #     CidrBlock: 10.0.6.0/24
   #     AvailabilityZone: !Select [1, !GetAZs '']
   #     Tags:
@@ -188,7 +206,7 @@ Resources:
   # ECRApiEndpoint:
   #   Type: AWS::EC2::VPCEndpoint
   #   Properties:
-  #     VpcId: !Ref ExistingVpcId
+  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
   #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.api'
   #     VpcEndpointType: Interface
   #     PrivateDnsEnabled: true
@@ -200,7 +218,7 @@ Resources:
   # ECRDkrEndpoint:
   #   Type: AWS::EC2::VPCEndpoint
   #   Properties:
-  #     VpcId: !Ref ExistingVpcId
+  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
   #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.dkr'
   #     VpcEndpointType: Interface
   #     PrivateDnsEnabled: true
@@ -212,7 +230,7 @@ Resources:
   # S3Endpoint:
   #   Type: AWS::EC2::VPCEndpoint
   #   Properties:
-  #     VpcId: !Ref ExistingVpcId
+  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
   #     ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
   #     VpcEndpointType: Gateway
   #     RouteTableIds:
@@ -233,7 +251,7 @@ Resources:
   #   Type: AWS::EC2::SecurityGroup
   #   Properties:
   #     GroupDescription: Security group for VPC Endpoints
-  #     VpcId: !Ref ExistingVpcId
+  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
   #     SecurityGroupIngress:
   #       - IpProtocol: tcp
   #         FromPort: 443
@@ -247,7 +265,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for ECS service
-      VpcId: !Ref ExistingVpcId
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       SecurityGroupIngress:
         - IpProtocol: 'tcp'
           FromPort: !Ref ECSContainerPort # Port your container listens on, e.g., 8080
@@ -278,7 +296,7 @@ Resources:
   # MyRDSPrivateSubnet1:
   #   Type: AWS::EC2::Subnet
   #   Properties:
-  #     VpcId: !Ref ExistingVpcId
+  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
   #     CidrBlock: 10.0.7.0/24
   #     AvailabilityZone: !Select [0, !GetAZs '']
   #     Tags:
@@ -287,7 +305,7 @@ Resources:
   # MyRDSPrivateSubnet2:
   #   Type: AWS::EC2::Subnet
   #   Properties:
-  #     VpcId: !Ref ExistingVpcId
+  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
   #     CidrBlock: 10.0.8.0/24
   #     AvailabilityZone: !Select [1, !GetAZs '']
   #     Tags:
@@ -301,7 +319,7 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-MyRDSSG'
-      VpcId: !Ref ExistingVpcId
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 5432
@@ -340,7 +358,7 @@ Resources:
       Name: !Sub '${AWS::StackName}-BankingTG'
       Port: 80 # hardcoded - the Target group forwards to ECS on port 80
       Protocol: HTTP
-      VpcId: !Ref ExistingVpcId
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       TargetType: ip
       HealthCheckEnabled: true
       HealthCheckPath: /api/banking/health
@@ -658,9 +676,9 @@ Resources:
             - Name: DB_NAME
               Value: !Ref BankingDatabaseName
             - Name: DB_USERNAME
-              Value: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+              Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:username}}'
             - Name: DB_PASSWORD
-              Value: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+              Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:password}}'
 
   BankingECSService:
     Type: AWS::ECS::Service
@@ -705,8 +723,8 @@ Resources:
       DBInstanceClass: db.t3.micro
       Engine: postgres
       EngineVersion: '16.4'
-      MasterUsername: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
-      MasterUserPassword: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+      MasterUsername: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:username}}'
+      MasterUserPassword: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:password}}'
       DBSubnetGroupName: !Ref RDSSubnetGroup
       VPCSecurityGroups:
         - !Ref MyRDSSG
@@ -762,8 +780,8 @@ Resources:
         Variables:
           RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
           DB_NAME: !Ref BankingDatabaseName
-          DB_USERNAME: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
-          DB_PASSWORD: !Sub '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:${AWS::AccountId}:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:password}}'
       VpcConfig:
         SubnetIds:
           - !Ref MyPublicSubnet1

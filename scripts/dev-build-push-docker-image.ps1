@@ -1,8 +1,5 @@
 param (
    [Parameter(Mandatory = $true)]
-   [string]$stackName,
-
-   [Parameter(Mandatory = $true)]
    [string]$accountId,
 
    [Parameter(Mandatory = $true)]
@@ -13,9 +10,9 @@ param (
 )
 
 # Configuration
-$awsRegion = aws configure get region
+$commonConstants = ./common-constants.ps1
 $imageTag = "latest"
-$ecrUri = "${accountId}.dkr.ecr.${awsRegion}.amazonaws.com"
+$ecrUri = "${accountId}.dkr.ecr.$($commonConstants.region).amazonaws.com"
 $ecrImageUri = "${ecrUri}/${ecrRepositoryName}:${imageTag}"
 
 # Create hashtable for returning values
@@ -35,14 +32,14 @@ Set-Location ${scriptsFolder}
 
 # Authenticate with ECR
 Write-Host "Authenticating with ECR..."
-aws ecr get-login-password --region $awsRegion | docker login --username AWS --password-stdin $ecrUri
+aws ecr get-login-password --region $commonConstants.region | docker login --username AWS --password-stdin $ecrUri
 
 # Create ECR repository if it doesn't exist
 Write-Host "Ensuring ECR repository exists..."
-$repositoryExists = aws ecr describe-repositories --repository-names $ecrRepositoryName --region $awsRegion 2>$null
+$repositoryExists = aws ecr describe-repositories --repository-names $ecrRepositoryName --region $commonConstants.region 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Creating ECR repository..."
-    aws ecr create-repository --repository-name $ecrRepositoryName --region $awsRegion
+    aws ecr create-repository --repository-name $ecrRepositoryName --region $commonConstants.region
 }
 
 # Tag and push image

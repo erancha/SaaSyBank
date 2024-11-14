@@ -5,12 +5,12 @@ if ($isMainBranch) {
     $stackName = 'sb'
 }
 else {
-    $stackName = 'sb-f5'
+    $stackName = 'sb-f6'
 }
 
 return @{
     isMainBranch = $isMainBranch
     stackName = $stackName
-    region = aws configure get region # "eu-central-1"
+    region = "eu-west-1" # aws configure get region
  }
  
