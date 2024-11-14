@@ -1,9 +1,8 @@
-Write-Host " $(Split-Path -Leaf $PSCommandPath) ..." -ForegroundColor White -BackgroundColor DarkBlue
+$commonConstants = ./common-constants.ps1
+Write-Host " $(Split-Path -Leaf $PSCommandPath) --region $($commonConstants.region) ..." -ForegroundColor White -BackgroundColor DarkBlue
 
 . ./get-ElapsedTimeFormatted.ps1
 $startTime = Get-Date
-
-$commonConstants = ./common-constants.ps1
 
 # Define an array to hold the resource listing
 $nonDefaultResources = @()
