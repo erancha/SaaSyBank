@@ -10,7 +10,7 @@ else {
 
 return @{
     isMainBranch = $isMainBranch
-    stackName = $stackName
-    region = "eu-west-1" # aws configure get region
- }
+    stackName    = $stackName
+    region       = aws configure get region # "eu-west-1"
+}
  
