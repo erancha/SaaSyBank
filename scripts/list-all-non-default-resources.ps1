@@ -176,9 +176,11 @@ foreach ($pool in $identityPools) {
 }
 
 # Check S3 Buckets
-$s3Buckets = aws s3api list-buckets --region $commonConstants.region --query "Buckets[?Name!='default'].{Name:Name}" --output json | ConvertFrom-Json
+$s3Buckets = aws s3api list-buckets --region $commonConstants.region --query "Buckets[].{Name:Name}" --output json | ConvertFrom-Json
 foreach ($bucket in $s3Buckets) {
-    $nonDefaultResources += "S3 Bucket: $($bucket.Name)"
+    if ($bucket.Name -ne 'default' -and -not ($bucket.Name -like 'aws-sam-cli-managed-default*')) {
+        $nonDefaultResources += "S3 Bucket: $($bucket.Name)"
+    }
 }
 
 # Check CloudFront Distributions
