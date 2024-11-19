@@ -224,7 +224,7 @@ async function sendMessageToSQS(messageBody) {
         MessageBody: JSON.stringify(messageBody),
       })
     );
-    console.log(`Message sent to SQS: ${data.MessageId}`);
+    // console.log(`Message sent to SQS: ${data.MessageId}`);
     return data;
   } catch (error) {
     console.error('Error sending message to SQS:', error);
