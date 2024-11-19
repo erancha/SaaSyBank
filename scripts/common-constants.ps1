@@ -5,7 +5,7 @@ if ($isMainBranch) {
     $stackName = 'sb'
 }
 else {
-    $stackName = 'sb-f6'
+    $stackName = 'sb-f8'
 }
 
 return @{

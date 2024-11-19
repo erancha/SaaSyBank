@@ -34,11 +34,11 @@ if ($LASTEXITCODE -eq 0) {
 
         $accountId = aws sts get-caller-identity --query "Account" --output text
         # Write-Host "Skipping docker build and push !" -ForegroundColor Yellow -BackgroundColor DarkGreen
-        $bankingDockerResults = # @{ecrImageUri = "${accountId}.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:latest"}
-        ./dev-build-push-docker-image.ps1 `
-            -accountId $accountId `
-            -ecrRepositoryName $ecrBankingRepositoryName `
-            -serviceName $bankingServiceName
+        $bankingDockerResults = @{ecrImageUri = "${accountId}.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:20241118-2344" }
+        # ./dev-build-push-docker-image.ps1 `
+        #     -accountId $accountId `
+        #     -ecrRepositoryName $ecrBankingRepositoryName `
+        #     -serviceName $bankingServiceName
 
         $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
         Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Build completed. Deploying .."

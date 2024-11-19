@@ -11,7 +11,7 @@ param (
 
 # Configuration
 $commonConstants = ./common-constants.ps1
-$imageTag = "latest"
+$imageTag = Get-Date -Format "yyyyMMdd-HHmm" # "latest" # 
 $ecrUri = "${accountId}.dkr.ecr.$($commonConstants.region).amazonaws.com"
 $ecrImageUri = "${ecrUri}/${ecrRepositoryName}:${imageTag}"
 
@@ -38,8 +38,8 @@ aws ecr get-login-password --region $commonConstants.region | docker login --use
 Write-Host "Ensuring ECR repository exists..."
 $repositoryExists = aws ecr describe-repositories --repository-names $ecrRepositoryName --region $commonConstants.region 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Creating ECR repository..."
-    aws ecr create-repository --repository-name $ecrRepositoryName --region $commonConstants.region
+   Write-Host "Creating ECR repository..."
+   aws ecr create-repository --repository-name $ecrRepositoryName --region $commonConstants.region
 }
 
 # Tag and push image

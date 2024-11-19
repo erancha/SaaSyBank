@@ -1,11 +1,14 @@
 const express = require('express');
 const { Pool } = require('pg');
+const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
+
+const sqs = new SQSClient({ region: process.env.APP_AWS_REGION });
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-const clientParams = {
+const pool = new Pool({
   host: process.env.RDS_ENDPOINT,
   database: process.env.DB_NAME,
   user: process.env.DB_USERNAME,
@@ -14,9 +17,7 @@ const clientParams = {
   ssl: {
     rejectUnauthorized: false, // TODO: Handle SSL before production!
   },
-};
-
-const pool = new Pool(clientParams);
+});
 pool
   .connect()
   .then(() => console.log('Connected to database'))
@@ -43,7 +44,6 @@ bankingRouter.get('/health', (req, res) => {
 // New endpoint: Create account
 bankingRouter.post('/account', async (req, res) => {
   const { accountId, initialBalance = 0, tenantId } = req.body;
-
   if (!accountId || !tenantId) {
     return res.status(400).json({ message: 'Account ID and Tenant ID are required' });
   }
@@ -62,6 +62,8 @@ bankingRouter.post('/account', async (req, res) => {
       initialBalance,
       tenantId,
     ]);
+
+    sendMessageToSQS({ path: req.path, body: req.body });
 
     res.status(201).json({
       message: 'Account created successfully',
@@ -105,7 +107,6 @@ bankingRouter.get('/balance/:tenantId/:accountId', async (req, res) => {
 // Handle deposit requests
 bankingRouter.post('/deposit', async (req, res) => {
   const { amount, accountId, tenantId } = req.body;
-
   if (!tenantId || !accountId || amount === undefined) {
     return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
   }
@@ -121,6 +122,8 @@ bankingRouter.post('/deposit', async (req, res) => {
       return res.status(404).json({ message: 'Account not found' });
     }
     res.json({ message: 'Deposit successful', account: result.rows[0] });
+
+    sendMessageToSQS({ path: req.path, body: req.body });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error processing deposit' });
@@ -132,7 +135,6 @@ bankingRouter.post('/deposit', async (req, res) => {
 // Handle withdraw requests
 bankingRouter.post('/withdraw', async (req, res) => {
   const { amount, accountId, tenantId } = req.body;
-
   if (!tenantId || !accountId || amount === undefined) {
     return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
   }
@@ -148,6 +150,8 @@ bankingRouter.post('/withdraw', async (req, res) => {
       return res.status(400).json({ message: 'Insufficient funds or account not found' });
     }
     res.json({ message: 'Withdraw successful', account: result.rows[0] });
+
+    sendMessageToSQS({ path: req.path, body: req.body });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error processing withdrawal' });
@@ -159,7 +163,6 @@ bankingRouter.post('/withdraw', async (req, res) => {
 // Handle transfer requests
 bankingRouter.post('/transfer', async (req, res) => {
   const { amount, fromAccountId, toAccountId, tenantId } = req.body;
-
   if (!tenantId || !fromAccountId || !toAccountId || amount === undefined) {
     return res.status(400).json({ message: 'From Account ID, To Account ID, Tenant ID, and Amount are required' });
   }
@@ -190,6 +193,8 @@ bankingRouter.post('/transfer', async (req, res) => {
 
     await client.query('COMMIT');
     res.json({ message: 'Transfer successful', fromAccount: withdrawResult.rows[0], toAccount: depositResult.rows[0] });
+
+    sendMessageToSQS({ path: req.path, body: req.body });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error(error);
@@ -208,3 +213,21 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`Banking service is running on port ${PORT}`);
 });
+
+// Function to insert a message into an SQS queue
+async function sendMessageToSQS(messageBody) {
+  try {
+    const data = await sqs.send(
+      new SendMessageCommand({
+        QueueUrl: process.env.SQS_QUEUE_URL,
+        MessageGroupId: 'Default', // Required for FIFO queues
+        MessageBody: JSON.stringify(messageBody),
+      })
+    );
+    console.log(`Message sent to SQS: ${data.MessageId}`);
+    return data;
+  } catch (error) {
+    console.error('Error sending message to SQS:', error);
+    throw error;
+  }
+}

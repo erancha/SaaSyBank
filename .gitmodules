@@ -1,0 +1,3 @@
+[submodule "backend/transactions-logger/encryption-submodule"]
+	path = backend/transactions-logger/encryption-submodule
+	url = https://github.com/erancha/kms-deks-redis-dynamodb-based-encryption.git

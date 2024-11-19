@@ -1,12 +1,12 @@
 param (
-  [string]$region
+    [string]$region
 )
 
 if (-not $region) {
     $commonConstants = ./common-constants.ps1
     $region = $commonConstants.region
 }
-Write-Host " $(Split-Path -Leaf $PSCommandPath) --region $region ..." -ForegroundColor White -BackgroundColor DarkBlue
+Write-Host " $(Split-Path -Leaf $PSCommandPath) --region $region ... (to search, use: | Select-String string-to-search)" -ForegroundColor White -BackgroundColor DarkBlue
 
 . ./get-ElapsedTimeFormatted.ps1
 $startTime = Get-Date
@@ -223,9 +223,9 @@ foreach ($dashboard in $cloudWatchDashboards) {
 # Output the non-default resources
 $nonDefaultResources | ForEach-Object -Begin { $index = 1 } -Process {
     $paddedIndex = "{0,2}" -f $index  # Right-align with 2 spaces
-    Write-Host ("#{0} : {1}" -f $paddedIndex, $_)
+    Write-Output ("#{0} : {1}" -f $paddedIndex, $_)
     $index++
 }
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
-Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Completed."
+Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Completed."

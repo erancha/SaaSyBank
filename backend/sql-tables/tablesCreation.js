@@ -48,6 +48,12 @@ exports.handler = async (event) => {
                 account_id TEXT NOT NULL,
                 balance DECIMAL(10, 2) NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS accountTransactions (
+                id SERIAL PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                account_id TEXT NOT NULL,
+                transaction BYTEA NOT NULL
+            );
         `;
 
     await dbClient.query(createTableQuery);
@@ -77,13 +83,16 @@ exports.handler = async (event) => {
     // 4. Display records count again
     const countQuery2 = 'SELECT COUNT(*) FROM accounts;';
     const countResult2 = await dbClient.query(countQuery2);
-    const finalRecordsCount = countResult2.rows[0].count;
-    console.log('Records count after deletion:', finalRecordsCount);
+    const finalAccountRecordsCount = countResult2.rows[0].count;
+    console.log('Records count after deletion:', finalAccountRecordsCount);
+    const countQuery3 = 'SELECT COUNT(*) FROM accountTransactions;';
+    const countResult3 = await dbClient.query(countQuery3);
+    const finalAccountTransactionsRecordsCount = countResult3.rows[0].count;
 
     return {
       statusCode: 200,
       body: JSON.stringify(
-        `Database checked/created, table created, record added, and deleted successfully. Current records count: ${finalRecordsCount}.`
+        `Database checked/created, table created, record added, and deleted successfully. Current records counts: ${finalAccountRecordsCount} , ${finalAccountTransactionsRecordsCount}.`
       ),
     };
   } catch (error) {

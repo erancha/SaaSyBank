@@ -590,8 +590,8 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-      # Policies: # TODO: Currently the deployment manually creates the log group: LogGroupName
-      #   - PolicyName: AllowCreateLogGroup
+      # Policies:
+      #   - PolicyName: AllowCreateLogGroup # TODO: Currently the deployment manually creates the log group: LogGroupName
       #     PolicyDocument:
       #       Version: '2012-10-17'
       #       Statement:
@@ -612,6 +612,15 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+      Policies:
+        - PolicyName: SQSSendMessagePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt BankingExecutedTransactionsQueue.Arn
 
   # Banking service
   #----------------
@@ -676,9 +685,13 @@ Resources:
             - Name: DB_NAME
               Value: !Ref BankingDatabaseName
             - Name: DB_USERNAME
-              Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:username}}'
+              Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
             - Name: DB_PASSWORD
-              Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:password}}'
+              Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+            - Name: APP_AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: SQS_QUEUE_URL
+              Value: !Ref BankingExecutedTransactionsQueue
 
   BankingECSService:
     Type: AWS::ECS::Service
@@ -708,6 +721,122 @@ Resources:
           ContainerPort: !Ref ECSContainerPort
           TargetGroupArn: !Ref BankingALBTG
 
+  BankingExecutedTransactionsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-executedTransactionsQueue.fifo'
+      FifoQueue: true
+      ContentBasedDeduplication: true
+
+  TransactionsLoggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: transactionsLogger.handler
+      Runtime: nodejs20.x
+      CodeUri: ../backend/transactions-logger/
+      Layers:
+        - !Ref pgLayer
+        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:NotesEncryptionLayer:240' # TODO: Adjust the security group
+        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:IoredisLayer:37' # TODO: Adjust the security group
+      Environment:
+        Variables:
+          RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
+          DB_NAME: !Ref BankingDatabaseName
+          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+      Role: !GetAtt TransactionsLoggerFunctionExecutionRole.Arn
+      Events: # event source mapping
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt BankingExecutedTransactionsQueue.Arn
+            BatchSize: 10
+            Enabled: true
+      VpcConfig:
+        SubnetIds:
+          - !Ref MyPublicSubnet1
+          - !Ref MyPublicSubnet2
+        SecurityGroupIds:
+          - !Ref MyECSServicesSG
+
+  TransactionsLoggerFunctionExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: SQSReceiveMessagePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt BankingExecutedTransactionsQueue.Arn
+        - PolicyName: RDSAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:Connect
+                Resource: '*'
+        # - PolicyName: DynamoReadOnlyDBAccess
+        #   PolicyDocument:
+        #     Version: '2012-10-17'
+        #     Statement:
+        #       - Effect: Allow
+        #         Action:
+        #           - dynamodb:Query
+        #           - dynamodb:Scan
+        #           - dynamodb:GetItem
+        #         Resource:
+        #           - 'arn:aws:dynamodb:eu-central-1:575491442067:table/ena-users'
+        #           - 'arn:aws:dynamodb:eu-central-1:575491442067:table/ena-users/index/UserIdIndex'
+        # - PolicyName: KMSAccess
+        #   PolicyDocument:
+        #     Version: '2012-10-17'
+        #     Statement:
+        #       - Effect: Allow
+        #         Action:
+        #           - kms:Encrypt
+        #           - kms:Decrypt
+        #           - kms:GenerateDataKey
+        #         Resource: 'arn:aws:kms:eu-central-1:575491442067:key/d0efc261-b71d-4f5c-9686-9876cc664243'
+        # - PolicyName: ElastiCacheAccess
+        #   PolicyDocument:
+        #     Version: '2012-10-17'
+        #     Statement:
+        #       - Effect: Allow
+        #         Action:
+        #           - 'elasticache:DescribeCacheClusters'
+        #           - 'elasticache:DescribeReplicationGroups'
+        #         Resource: '*'
+
+  # SqsVpcEndpoint:
+  #   Type: AWS::EC2::VPCEndpoint
+  #   Condition: CreateVpc
+  #   Properties:
+  #     VpcEndpointType: Interface
+  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+  #     ServiceName: !Sub com.amazonaws.${AWS::Region}.sqs
+  #     SubnetIds:
+  #       - !Ref MyECSPrivateSubnet1 # TODO
+  #       - !Ref MyECSPrivateSubnet2 # TODO
+  #     SecurityGroupIds:
+  #       - !Ref MyECSServicesSG
+  #     PrivateDnsEnabled: true
+
   #==========================================================================================================================================================
   # TODO: Alternate EKS (Kubernetes) with Fargate deployment: https://docs.aws.amazon.com/eks/latest/userguide/fargate.html.
   #==========================================================================================================================================================
@@ -723,8 +852,8 @@ Resources:
       DBInstanceClass: db.t3.micro
       Engine: postgres
       EngineVersion: '16.4'
-      MasterUsername: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:username}}'
-      MasterUserPassword: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:password}}'
+      MasterUsername: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+      MasterUserPassword: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
       DBSubnetGroupName: !Ref RDSSubnetGroup
       VPCSecurityGroups:
         - !Ref MyRDSSG
@@ -780,8 +909,8 @@ Resources:
         Variables:
           RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
           DB_NAME: !Ref BankingDatabaseName
-          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-west-1:058264214567:secret:/sb/rdscredentials-ysbgD7:SecretString:password}}'
+          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
       VpcConfig:
         SubnetIds:
           - !Ref MyPublicSubnet1
