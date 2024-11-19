@@ -38,22 +38,20 @@
 - **Purpose**: Distribute API requests
 - **SLA**: Auto-scales for high availability
 
-#### 2.2 **Amazon Cognito**
-
-- **Purpose**: User authentication and management
-- **Schedule**: Phase 2
-
-#### 2.3 **ECS with Fargate**
+#### 2.2 **ECS with Fargate**
 
 - **Objective**: Run containerized applications for banking functionalities
-- **Deployment**: Managed via Amazon ECS
 - **Network**: Deployed in private subnets
 
-#### 2.4 **Amazon RDS with PostgreSQL**
+#### 2.3 **RDS with PostgreSQL**
 
 - **Purpose**: Store accounts data
-- **Deployment**: Managed RDS instance in private subnets
+- **Network**: Managed RDS instance in private subnets
 - **Backup**: Automated backups enabled
+
+#### 2.4 **SQS**
+
+- **Purpose**: To separate the processes of transaction encryption and saving from the core online banking functionalities managed by ECS. The ECS Fargate task is designed to handle only the immediate updating of transaction details in RDS, such as tenant ID, account ID, amount, and target account ID (for transfers). This allows for a quicker response time, as the ECS task can return the result of the transaction immediately without being burdened by the additional overhead of encryption and saving, which will be processed asynchronously through SQS.
 
 ### 3. **Deployment Flexibility**
 
@@ -62,16 +60,18 @@
 
 ### 4. **Future Enhancements**
 
-#### 4.1 **Amazon CloudFront**
+#### 4.1 **Cognito**
+
+- **Purpose**: User authentication and management
+
+#### 4.2 **CloudFront**
 
 - **Purpose**: CDN for improved performance
-- **Schedule**: Phase 2
 
-#### 4.2 **Amazon ElastiCache (Redis)**
+#### 4.3 **ElastiCache (Redis)**
 
 - **Purpose**: In-memory caching to enhance response times
-- **Usage**: Cache frequently accessed data (e.g., user sessions)
-- **Schedule**: Phase 2
+- **Usage**: Cache frequently accessed data
 
 ---
 
@@ -79,7 +79,7 @@
 
 - **Network**: Use private subnets for ECS and RDS
 - **Data**: Enable encryption at rest and in transit
-- **Authentication**: Amazon Cognito for user management
+- **Authentication**: Cognito for user management
 - **Access Control**: Role-based policies for AWS resources
 
 ---
