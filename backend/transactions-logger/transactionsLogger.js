@@ -1,6 +1,9 @@
 const { Client } = require('pg'); // PostgreSQL client
 // const { getUserDataKey, encrypt } = require('encryption-submodule/encryption');
 
+//=============================================================================================================
+// Handler to process records from an SQS queue (by event source mapping) into a PG table 'accountTransactions'
+//=============================================================================================================
 exports.handler = async (event) => {
   if (!event.Records || event.Records.length === 0) {
     console.warn('No records to process.');
@@ -44,40 +47,40 @@ exports.handler = async (event) => {
           console.error('Invalid record data, tenantId not found!', record.body);
           // Consider sending to dead-letter queue
           continue;
-        } else {
-          if (!accountId) {
-            // For transfer the function inserts two records - one for the auditing of the 'fromAccount', and one for the 'toAccount':
-            const { fromAccountId, toAccountId } = JSON.parse(record.body).body;
-            if (!fromAccountId || !toAccountId) {
-              console.error('Invalid record data, fromAccountId|toAccountId not found!', record.body);
-            } else {
-              const encryptedTransactionData = record.body; // await encrypt(userDataKey, record.body);
-              consoleLog({ tenantId, fromAccountId, toAccountId, encryptedTransactionData });
-              await dbClient.query('INSERT INTO accountTransactions (tenant_id, account_id, transaction) VALUES ($1, $2, $3) RETURNING *', [
-                tenantId,
-                fromAccountId,
-                encryptedTransactionData,
-              ]);
+        } else if (!accountId) {
+          // Transfer operation: The handler inserts two records - one for the auditing of the 'fromAccount', and one for the 'toAccount':
+          //==============================================================================================================================
+          const { fromAccountId, toAccountId } = JSON.parse(record.body).body;
+          if (!fromAccountId || !toAccountId) {
+            console.error('Invalid record data, fromAccountId|toAccountId not found!', record.body);
+          } else {
+            const encryptedTransactionData = record.body; // await encrypt(userDataKey, record.body);
+            consoleLog({ tenantId, fromAccountId, toAccountId, encryptedTransactionData });
+            await dbClient.query('INSERT INTO accountTransactions (tenant_id, account_id, transaction) VALUES ($1, $2, $3) RETURNING *', [
+              tenantId,
+              fromAccountId,
+              encryptedTransactionData,
+            ]);
 
-              await dbClient.query('INSERT INTO accountTransactions (tenant_id, account_id, transaction) VALUES ($1, $2, $3) RETURNING *', [
-                tenantId,
-                toAccountId,
-                encryptedTransactionData,
-              ]);
-            }
-            continue;
+            await dbClient.query('INSERT INTO accountTransactions (tenant_id, account_id, transaction) VALUES ($1, $2, $3) RETURNING *', [
+              tenantId,
+              toAccountId,
+              encryptedTransactionData,
+            ]);
           }
+        } else {
+          // Other operations: The handler inserts one record:
+          //==================================================
+          const encryptedTransactionData = record.body; // await encrypt(userDataKey, record.body);
+          consoleLog({ tenantId, accountId, encryptedTransactionData });
+          await dbClient.query('INSERT INTO accountTransactions (tenant_id, account_id, transaction) VALUES ($1, $2, $3) RETURNING *', [
+            tenantId,
+            accountId,
+            encryptedTransactionData,
+          ]);
         }
-
-        const encryptedTransactionData = record.body; // await encrypt(userDataKey, record.body);
-        consoleLog({ tenantId, accountId, encryptedTransactionData });
-        await dbClient.query('INSERT INTO accountTransactions (tenant_id, account_id, transaction) VALUES ($1, $2, $3) RETURNING *', [
-          tenantId,
-          accountId,
-          encryptedTransactionData,
-        ]);
       } catch (recordError) {
-        console.error(`Error processing individual record: ${recordError}`);
+        console.error(`Error processing a record: ${recordError}`);
         // Consider sending to dead-letter queue
       }
     }
