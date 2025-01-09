@@ -20,7 +20,7 @@
 
 ## Architecture Diagram
 
-![Architecture Diagram](https://lucid.app/publicSegments/view/c7a8cbef-ecce-4e23-8742-93f5669829d3/image.jpeg)
+![Architecture Diagram](https://lucid.app/publicSegments/view/69c70e24-cb99-4f28-8cf9-59329f1bc55b/image.jpeg)
 
 ---
 
