@@ -4,7 +4,7 @@
 
 **Functionality**: Account creation, balance inquiries, deposits, withdrawals, and money transfers.  
 **Deployment**: Single-tenant or multi-tenant SaaS.  
-**Initial Users Count**: 1,000 (rapid growth expected), with ~50 concurrent users.  
+**Initial Users Count**: ~1,000 (rapid growth expected), with ~50 concurrent users.  
 **SLA**:
 
 - **Uptime Guarantee**:
@@ -12,7 +12,7 @@
 - **Response Time**:
   Responsiveness of less than 5 seconds for API calls.
 
-**Frontend**: N/A (a Postman collection is provided for the REST API).
+**Frontend**: N/A (a Postman collection is provided for REST API).
 
 <small>**Note**: This is a deployable AWS architecture exercise.</small>
 
