@@ -29,7 +29,7 @@
 ### 1. **Frontend**
 
 - **Status**: Not available in Phase 1
-- **Delivery**: Postman collection
+- **Deliverable**: Postman collection
 
 ### 2. **Backend Architecture on AWS**
 
