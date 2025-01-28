@@ -1,8 +1,5 @@
-scripts/.aws-sam/build.toml
-scripts/.aws-sam/build/template.yaml
 backend/banking-service/node_modules/
 backend/layers/pg/nodejs/node_modules/
-scripts/.aws-sam/build/MyCreateTablesFunction/tablesCreation.js
-scripts/.aws-sam/build/TransactionsLoggerFunction/transactionsLogger.js
-scripts/.aws-sam/build/TransactionsLoggerFunction/encryption-submodule/encryption.js
-scripts/.aws-sam/build/TransactionsLoggerFunction/encryption-submodule/README.md
+scripts/.aws-sam/*
+scripts/common/util/node_modules/
+scripts/common/.aws-sam/*

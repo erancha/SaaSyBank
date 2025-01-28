@@ -628,7 +628,7 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Ref LogGroupName
-      RetentionInDays: 3
+      RetentionInDays: 1
 
   BankingALBListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule

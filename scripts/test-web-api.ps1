@@ -3,20 +3,22 @@ param (
     [int]$iterationsCount = 1
 )
 
-. ./get-ElapsedTimeFormatted.ps1
+$scriptName = Split-Path -Leaf $PSCommandPath
+
+. ./common/util/get-ElapsedTimeFormatted.ps1
 
 $startTime = Get-Date
 
 # ==========================================================================
 # Execute all HTTP requests deployed by the last stack with test dummy data.
 # ==========================================================================
-Write-Host " $(Split-Path -Leaf $PSCommandPath), Parameters:" ($PSBoundParameters.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -ForegroundColor White -BackgroundColor DarkBlue
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
-Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Retriving LoadBalancerURL from the last stack output ..."
+Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : $scriptName , Parameters:" ($PSBoundParameters.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) "..." -ForegroundColor White -BackgroundColor DarkBlue
+Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Retrieving LoadBalancerURL from the last stack output ..."
 
 # Extract LoadBalancerURL from the last cloudformation stack:
-$commonConstants = ./common-constants.ps1
+$commonConstants = ./common/constants.ps1
 $stack_outputs = aws cloudformation describe-stacks --region $commonConstants.region --stack-name $commonConstants.stackName --query "Stacks[0].Outputs" --output json | ConvertFrom-Json
 $loadBalancerURL = ($stack_outputs | Where-Object { $_.OutputKey -eq "LoadBalancerURL" }).OutputValue
 if (-not $loadBalancerURL) {
@@ -24,7 +26,6 @@ if (-not $loadBalancerURL) {
     exit
 }
 
-# Function to execute requests
 function Execute-Requests {
     param (
         [string]$loadBalancerURL,
@@ -64,50 +65,50 @@ function Execute-Requests {
             # Define the requests with expected responses
             $requests = @(
                 @{
-                    Name = "Time"
+                    Name   = "Time"
                     Method = "GET"
-                    Url = "/api/time"
+                    Url    = "/api/time"
                 },
                 @{
-                    Name = "Create Account"
+                    Name   = "Create Account"
                     Method = "POST"
-                    Url = "/api/banking/account"
-                    Body = @{ "accountId" = $accountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
+                    Url    = "/api/banking/account"
+                    Body   = @{ "accountId" = $accountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
                 },
                 @{
-                    Name = "Create To Account"
+                    Name   = "Create To Account"
                     Method = "POST"
-                    Url = "/api/banking/account"
-                    Body = @{ "accountId" = $toAccountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
+                    Url    = "/api/banking/account"
+                    Body   = @{ "accountId" = $toAccountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
                 },
                 @{
-                    Name = "Deposit"
+                    Name   = "Deposit"
                     Method = "POST"
-                    Url = "/api/banking/deposit"
-                    Body = @{ "amount" = 1000; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
+                    Url    = "/api/banking/deposit"
+                    Body   = @{ "amount" = 1000; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
                 },
                 @{
-                    Name = "Withdraw"
+                    Name   = "Withdraw"
                     Method = "POST"
-                    Url = "/api/banking/withdraw"
-                    Body = @{ "amount" = 500; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
+                    Url    = "/api/banking/withdraw"
+                    Body   = @{ "amount" = 500; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
                 },
                 @{
-                    Name = "Transfer"
+                    Name   = "Transfer"
                     Method = "POST"
-                    Url = "/api/banking/transfer"
-                    Body = @{ "amount" = 200; "fromAccountId" = $accountId; "toAccountId" = $toAccountId; "tenantId" = $tenantId } | ConvertTo-Json
+                    Url    = "/api/banking/transfer"
+                    Body   = @{ "amount" = 200; "fromAccountId" = $accountId; "toAccountId" = $toAccountId; "tenantId" = $tenantId } | ConvertTo-Json
                 },
                 @{
-                    Name = "Get Balance"
-                    Method = "GET"
-                    Url = "/api/banking/balance/$tenantId/$accountId"
+                    Name             = "Get Balance"
+                    Method           = "GET"
+                    Url              = "/api/banking/balance/$tenantId/$accountId"
                     ExpectedResponse = '{"message":"Balance retrieved successfully","accountId":"' + $accountId + '","balance":"300.00"}'
                 },
                 @{
-                    Name = "Get Balance for To Account"
-                    Method = "GET"
-                    Url = "/api/banking/balance/$tenantId/$toAccountId"
+                    Name             = "Get Balance for To Account"
+                    Method           = "GET"
+                    Url              = "/api/banking/balance/$tenantId/$toAccountId"
                     ExpectedResponse = '{"message":"Balance retrieved successfully","accountId":"' + $toAccountId + '","balance":"200.00"}'
                 }
             )
@@ -121,7 +122,8 @@ function Execute-Requests {
             if (-not [string]::IsNullOrEmpty($body)) {
                 $bodyObject = $body | ConvertFrom-Json
                 $requestJson = $bodyObject | ConvertTo-Json -Compress
-            } else {
+            }
+            else {
                 $requestJson = $request.Url
             }
 
@@ -129,7 +131,8 @@ function Execute-Requests {
             $response = ''
             if ($method -eq "GET") {
                 $response = Invoke-RestMethod -Method $method -Uri $url
-            } else {
+            }
+            else {
                 $response = Invoke-RestMethod -Method $method -Uri $url -Body $body -ContentType "application/json"
             }
 
@@ -150,14 +153,14 @@ Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : 
 
 $initRequests = @(
     @{
-        Name = "Tables"
+        Name   = "Tables"
         Method = "GET"
-        Url = "/api/tables"
+        Url    = "/api/tables"
     },
     @{
-        Name = "Health Check"
+        Name   = "Health Check"
         Method = "GET"
-        Url = "/api/banking/health"
+        Url    = "/api/banking/health"
     }
 )
 Execute-Requests -loadBalancerURL $loadBalancerURL -requests $initRequests
@@ -185,4 +188,4 @@ Get-Job | Remove-Job
 Execute-Requests -loadBalancerURL $loadBalancerURL -requests $initRequests
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
-Write-Output "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Completed."
+Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Completed $scriptName." -ForegroundColor Blue

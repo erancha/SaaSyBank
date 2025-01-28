@@ -92,7 +92,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       body: JSON.stringify(
-        `Database checked/created, table created, record added, and deleted successfully. Current records counts: ${finalAccountRecordsCount} , ${finalAccountTransactionsRecordsCount}.`
+        `Database checked/created, table created, record added, and deleted successfully. Current records counts: ${finalAccountRecordsCount} accounts, ${finalAccountTransactionsRecordsCount} transactions.`
       ),
     };
   } catch (error) {

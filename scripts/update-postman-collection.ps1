@@ -1,4 +1,4 @@
-$commonConstants = ./common-constants.ps1
+$commonConstants = ./common/constants.ps1
 
 # Retrieve the stack outputs from CloudFormation
 $stack_outputs = aws cloudformation describe-stacks --region $commonConstants.region --stack-name $commonConstants.stackName --query "Stacks[0].Outputs" --output json | ConvertFrom-Json
@@ -21,7 +21,8 @@ if ($variableToUpdate) {
         $variableToUpdate.value = $loadBalancerURL
         $hasChanged = $true
     }
-} else {
+}
+else {
     # If the variable doesn't exist, create a new one
     $jsonContent.values += [PSCustomObject]@{ key = "baseUrl"; value = $loadBalancerURL }
     $hasChanged = $true
@@ -31,6 +32,7 @@ if ($variableToUpdate) {
 if ($hasChanged) {
     $jsonContent | ConvertTo-Json -Depth 10 | Set-Content -Path $environmentFilePath
     Write-Host "${environmentFilePath} has been updated successfully. Please import into Postman."
-} else {
+}
+else {
     Write-Host "No changes were made to the baseUrl in ${environmentFilePath}."
 }
