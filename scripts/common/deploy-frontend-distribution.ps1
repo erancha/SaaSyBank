@@ -7,15 +7,15 @@ Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : $s
 
 $commonConstants = ./constants.ps1
 
-$stack_outputs = .\get-stack-outputs.ps1
+$stackOutputs = ./get-stack-outputs.ps1
 
 # Update the appConfig.json file
-$cloudfront_url    = ($stack_outputs | Where-Object { $_.OutputKey -eq "CloudFrontUrl" }).OutputValue
-$redirect_sign_in  = $cloudfront_url  # /callback
+$cloudfront_url = ($stackOutputs | Where-Object { $_.OutputKey -eq "CloudFrontUrl" }).OutputValue
+$redirect_sign_in = $cloudfront_url  # /callback
 $redirect_sign_out = $cloudfront_url # /logout
 .\generate-app-config.ps1   -frontend_build_time `
-                            -redirect_sign_in $redirect_sign_in `
-                            -redirect_sign_out $redirect_sign_out
+    -redirect_sign_in $redirect_sign_in `
+    -redirect_sign_out $redirect_sign_out
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
 Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Building the React App ..."
@@ -24,7 +24,7 @@ npm run build
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
 Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Copying the distribution files to the S3 bucket ..."
-$S3_BUCKET = ($stack_outputs | Where-Object { $_.OutputKey -eq "S3BucketName" }).OutputValue
+$S3_BUCKET = ($stackOutputs | Where-Object { $_.OutputKey -eq "S3BucketName" }).OutputValue
 if (-not $S3_BUCKET) {
     $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
     Write-Error "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Failed to find S3 bucket name in CloudFormation outputs"
@@ -44,16 +44,18 @@ Copy-Item -Path $commonConstants.lastDevConfigFilePath -Destination $commonConst
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
 Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Creating CloudFront invalidation ..."
-$cloudfront_distribution_id = ($stack_outputs | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
+$cloudfront_distribution_id = ($stackOutputs | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
 if ($cloudfront_distribution_id) {
     aws cloudfront create-invalidation --distribution-id $cloudfront_distribution_id --paths "/*"
     $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
     if ($LASTEXITCODE -ne 0) {
         Write-Error "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Failed to create CloudFront invalidation. Please check your AWS credentials and permissions."
-    } else {
+    }
+    else {
         Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : CloudFront invalidation created successfully. Your website is available at the following URL: ${cloudfront_url}."
     }
-} else {
+}
+else {
     Write-Error "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Failed to find CloudFront distribution ID in CloudFormation outputs."
 }
 

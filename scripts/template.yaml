@@ -11,6 +11,14 @@ Parameters:
     Type: String
     Default: 10.0.0.0/16
     Description: 'The CIDR block for the VPC'
+  ExistingMyPublicSubnet1:
+    Type: String
+    Description: 'ID of the existing MyPublicSubnet1'
+    Default: ''
+  ExistingMyPublicSubnet2:
+    Type: String
+    Description: 'ID of the existing MyPublicSubnet2'
+    Default: ''
 
   # ExistingUserPoolId:
   #   Type: String
@@ -76,11 +84,11 @@ Conditions:
 
 Resources:
   #==========================================================================================================================================================
-  # Networking resources (WIP):
+  # Networking resources:
   #  - 2 public subnets for an ALB, allowing inbound traffic only on port 80 (initially), from any ip, and outbound traffic only to the ECS' SG.
-  #  - 2 private subnets for ECS, allowing inbound traffic only from the ALB's SG, and outbound traffic only to the ECR's and RDS's SGs.
-  #  - 2 private subnets for RDS, allowing inbound traffic only from the ECS's SG, and outbound traffic only to the RDS service.
-  #  - ECS' tasks require private access to retrieve images from ECR thru three vpc endpoints: two to ECR (interface) and one to S3 (gateway).
+  #  - (WIP) 2 private subnets for ECS, allowing inbound traffic only from the ALB's SG, and outbound traffic only to the ECR's and RDS's SGs.
+  #  - (WIP) 2 private subnets for RDS, allowing inbound traffic only from the ECS's SG, and outbound traffic only to the RDS service.
+  #  - (WIP) ECS' tasks require private access to retrieve images from ECR thru three vpc endpoints: two to ECR (interface) and one to S3 (gateway).
   #==========================================================================================================================================================
   # Traffic Flow Overview
   #   Client to ALB: The client sends a request to the ALB on port 80.
@@ -93,6 +101,8 @@ Resources:
   MyVPC:
     Type: AWS::EC2::VPC
     Condition: CreateVpc
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       CidrBlock: !Ref VpcCidrBlock
       EnableDnsHostnames: true # Added to enable DNS support and hostnames in the VPC.
@@ -103,10 +113,11 @@ Resources:
         - Key: MainRouteTable
           Value: !Sub '${AWS::StackName}-MainRTB'
 
-  # Public (ALB)
-  #-------------
   MyInternetGateway:
     Type: AWS::EC2::InternetGateway
+    Condition: CreateVpc
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       Tags:
         - Key: Name
@@ -114,14 +125,20 @@ Resources:
 
   AttachMyIGWToMyVPC:
     Type: AWS::EC2::VPCGatewayAttachment
+    Condition: CreateVpc
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      VpcId: !Ref MyVPC
       InternetGatewayId: !Ref MyInternetGateway
 
   MyRouteTable:
     Type: AWS::EC2::RouteTable
+    Condition: CreateVpc
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      VpcId: !Ref MyVPC
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-RTB'
@@ -130,6 +147,9 @@ Resources:
     # The route defined with 0.0.0.0/0 allows outbound traffic from resources in the associated subnets to the public internet.
     # Responses to outbound requests are allowed back to those resources, effectively making the interaction appear bidirectional, as long as the security groups (SG) and network ACLs do not block that traffic.
     Type: AWS::EC2::Route
+    Condition: CreateVpc
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       RouteTableId: !Ref MyRouteTable
       DestinationCidrBlock: '0.0.0.0/0'
@@ -137,8 +157,11 @@ Resources:
 
   MyPublicSubnet1:
     Type: AWS::EC2::Subnet
+    Condition: CreateVpc
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      VpcId: !Ref MyVPC
       CidrBlock: 10.0.3.0/24
       AvailabilityZone: !Select [0, !GetAZs '']
       MapPublicIpOnLaunch: true
@@ -147,8 +170,11 @@ Resources:
           Value: !Sub '${AWS::StackName}-PublicSubnet1'
   MyPublicSubnet2:
     Type: AWS::EC2::Subnet
+    Condition: CreateVpc
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      VpcId: !Ref MyVPC
       CidrBlock: 10.0.4.0/24
       AvailabilityZone: !Select [1, !GetAZs '']
       MapPublicIpOnLaunch: true
@@ -158,11 +184,17 @@ Resources:
 
   AssociateMyPublicSubnet1ToMyRTB:
     Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       SubnetId: !Ref MyPublicSubnet1
       RouteTableId: !Ref MyRouteTable
   AssociateMyPublicSubnet2ToMyRTB:
     Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       SubnetId: !Ref MyPublicSubnet2
       RouteTableId: !Ref MyRouteTable
@@ -493,8 +525,8 @@ Resources:
     Properties:
       Name: !Sub '${AWS::StackName}-ALB'
       Subnets:
-        - !Ref MyPublicSubnet1
-        - !Ref MyPublicSubnet2
+        - !If [CreateVpc, !Ref MyPublicSubnet1, !Ref ExistingMyPublicSubnet1]
+        - !If [CreateVpc, !Ref MyPublicSubnet2, !Ref ExistingMyPublicSubnet2]
       SecurityGroups:
         - !Ref MyALBSG
       Scheme: internet-facing
@@ -709,8 +741,8 @@ Resources:
           Subnets:
             # - !Ref MyECSPrivateSubnet1 # TODO
             # - !Ref MyECSPrivateSubnet2 # TODO
-            - !Ref MyPublicSubnet1
-            - !Ref MyPublicSubnet2
+            - !If [CreateVpc, !Ref MyPublicSubnet1, !Ref ExistingMyPublicSubnet1]
+            - !If [CreateVpc, !Ref MyPublicSubnet2, !Ref ExistingMyPublicSubnet2]
           AssignPublicIp: ENABLED
       DeploymentConfiguration:
         MaximumPercent: 200
@@ -754,8 +786,8 @@ Resources:
             Enabled: true
       VpcConfig:
         SubnetIds:
-          - !Ref MyPublicSubnet1
-          - !Ref MyPublicSubnet2
+          - !If [CreateVpc, !Ref MyPublicSubnet1, !Ref ExistingMyPublicSubnet1]
+          - !If [CreateVpc, !Ref MyPublicSubnet2, !Ref ExistingMyPublicSubnet2]
         SecurityGroupIds:
           - !Ref MyECSServicesSG
 
@@ -854,7 +886,7 @@ Resources:
       EngineVersion: '16.4'
       MasterUsername: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
       MasterUserPassword: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
-      DBSubnetGroupName: !Ref RDSSubnetGroup
+      DBSubnetGroupName: !Ref MyRDSSubnetGroup
       VPCSecurityGroups:
         - !Ref MyRDSSG
       DBName: !Ref BankingDatabaseName
@@ -862,15 +894,15 @@ Resources:
       PubliclyAccessible: !If [AllowRDSPublicAccessCondition, true, false]
     DeletionPolicy: Delete # This applies when the stack is deleted; ensure no final snapshot is created.
 
-  RDSSubnetGroup:
+  MyRDSSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
       DBSubnetGroupDescription: !Sub '${AWS::StackName}-RDSSubnetGroup'
       SubnetIds:
         # - !Ref MyRDSPrivateSubnet1 # TODO
         # - !Ref MyRDSPrivateSubnet2 # TODO
-        - !Ref MyPublicSubnet1
-        - !Ref MyPublicSubnet2
+        - !If [CreateVpc, !Ref MyPublicSubnet1, !Ref ExistingMyPublicSubnet1]
+        - !If [CreateVpc, !Ref MyPublicSubnet2, !Ref ExistingMyPublicSubnet2]
       DBSubnetGroupName: !Sub '${AWS::StackName}-RDSSubnetGroup'
 
   MyCreateTablesLambdaExecutionRole:
@@ -913,8 +945,8 @@ Resources:
           DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
       VpcConfig:
         SubnetIds:
-          - !Ref MyPublicSubnet1
-          - !Ref MyPublicSubnet2
+          - !If [CreateVpc, !Ref MyPublicSubnet1, !Ref ExistingMyPublicSubnet1]
+          - !If [CreateVpc, !Ref MyPublicSubnet2, !Ref ExistingMyPublicSubnet2]
         SecurityGroupIds:
           - !Ref MyECSServicesSG
       Role: !GetAtt MyCreateTablesLambdaExecutionRole.Arn
@@ -1436,41 +1468,53 @@ Resources:
   #         }
 
 Outputs:
-  MyRouteTableId:
-    Description: 'The ID of the route table associated with the VPC for this application '
-    Value: !Ref MyRouteTable
+  MyVPCId:
+    Description: 'The ID of the VPC'
+    Value: !Ref MyVPC
+    Condition: CreateVpc
+
+  MyInternetGatewayId:
+    Description: 'The ID of the Internet Gateway'
+    Value: !Ref MyInternetGateway
+    Condition: CreateVpc
+
+  # MyRouteTableId:
+  #   Description: 'The ID of the route table associated with the VPC for this application '
+  #   Value: !Ref MyRouteTable
 
   PublicSubnet1Id:
     Description: 'ID of the first public subnet'
     Value: !Ref MyPublicSubnet1
+    Condition: CreateVpc
 
   PublicSubnet2Id:
     Description: 'ID of the second public subnet'
     Value: !Ref MyPublicSubnet2
+    Condition: CreateVpc
 
-  ALBSecurityGroupId:
-    Description: 'ID of the ALB Security Group'
-    Value: !Ref MyALBSG
+  # ALBSecurityGroupId:
+  #   Description: 'ID of the ALB Security Group'
+  #   Value: !Ref MyALBSG
 
   LoadBalancerURL:
     Description: 'LoadBalancer URL'
     Value: !Sub 'http://${MyALB.DNSName}'
 
-  ECSSecurityGroupId:
-    Description: 'ID of the ECS Security Group'
-    Value: !Ref MyECSServicesSG
+  # ECSSecurityGroupId:
+  #   Description: 'ID of the ECS Security Group'
+  #   Value: !Ref MyECSServicesSG
 
-  ECSExecutionRoleArn:
-    Description: 'ARN of the ECS Execution Role'
-    Value: !GetAtt MyECSExecutionRole.Arn
+  # ECSExecutionRoleArn:
+  #   Description: 'ARN of the ECS Execution Role'
+  #   Value: !GetAtt MyECSExecutionRole.Arn
 
-  ECSTaskRoleArn:
-    Description: 'ARN of the ECS Task Role'
-    Value: !GetAtt MyECSTaskRole.Arn
+  # ECSTaskRoleArn:
+  #   Description: 'ARN of the ECS Task Role'
+  #   Value: !GetAtt MyECSTaskRole.Arn
 
-  ECSServiceName:
-    Description: 'Name of the ECS service'
-    Value: !Ref BankingECSService
+  # ECSServiceName:
+  #   Description: 'Name of the ECS service'
+  #   Value: !Ref BankingECSService
 
   RDSInstanceEndpoint:
     Description: 'RDS Instance Endpoint'

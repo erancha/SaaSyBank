@@ -18,9 +18,8 @@ Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : $s
 Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Retrieving LoadBalancerURL from the last stack output ..."
 
 # Extract LoadBalancerURL from the last cloudformation stack:
-$commonConstants = ./common/constants.ps1
-$stack_outputs = aws cloudformation describe-stacks --region $commonConstants.region --stack-name $commonConstants.stackName --query "Stacks[0].Outputs" --output json | ConvertFrom-Json
-$loadBalancerURL = ($stack_outputs | Where-Object { $_.OutputKey -eq "LoadBalancerURL" }).OutputValue
+$stackOutputs = ./common/get-stack-outputs.ps1
+$loadBalancerURL = ($stackOutputs | Where-Object { $_.OutputKey -eq "LoadBalancerURL" }).OutputValue
 if (-not $loadBalancerURL) {
     Write-Error "LoadBalancerURL not found in stack outputs."
     exit

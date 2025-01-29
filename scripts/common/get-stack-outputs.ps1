@@ -1,6 +1,14 @@
-$commonConstants = ./constants.ps1
+$originalLocation = Get-Location
+try {
+   Set-Location $PSScriptRoot
+   
+   $commonConstants = ./constants.ps1
 
-$stack_outputs = aws cloudformation describe-stacks --stack-name $commonConstants.stackName --region $commonConstants.region --query "Stacks[0].Outputs" --output json | ConvertFrom-Json
-# Write-Host "Stack outputs:"
-# $stack_outputs | ForEach-Object { Write-Host "  $($_.OutputKey): $($_.OutputValue)" }
-return $stack_outputs
+   $stackOutputs = aws cloudformation describe-stacks --stack-name $commonConstants.stackName --region $commonConstants.region --query "Stacks[0].Outputs" --output json | ConvertFrom-Json
+   # Write-Host "Stack outputs:"
+   # $stackOutputs | ForEach-Object { Write-Host "  $($_.OutputKey): $($_.OutputValue)" }
+   return $stackOutputs
+}
+finally {
+   Set-Location $originalLocation
+}

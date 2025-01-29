@@ -65,7 +65,9 @@ try {
                 $allowRDSPublicAccess = 'true'
             }
             $parameterOverrides = @(
-                # "ExistingVpcId='vpc-08016eb77e7ac9962'",
+                # "ExistingVpcId='vpc-0d939650fa8310150'",
+                # "ExistingMyPublicSubnet1='subnet-07de4503d6e6ea118'",
+                # "ExistingMyPublicSubnet2='subnet-0d5b64a476d5d955a'",
                 # "ExistingUserPoolId='eu-central-1_OHq1aZYju'",
                 # "ExistingIdentityPoolId='eu-central-1:e9f848f2-a3ed-43f9-8ddb-833ca34233ba'",
                 # "ExistingCognitoDomain='ena-575491442067.auth.eu-central-1.amazoncognito.com'",
