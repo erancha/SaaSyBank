@@ -37,13 +37,11 @@ if ($deleteStack) {
     $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
     Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Deleting stack '$($commonConstants.stackName)' ..."
 
-    ./util/list-all-non-default-resources.ps1 -region $commonConstants.region | Select-String "$($commonConstants.stackName)"
-
     aws cloudformation delete-stack --stack-name $commonConstants.stackName --region $commonConstants.region
     aws cloudformation wait stack-delete-complete --stack-name $commonConstants.stackName --region $commonConstants.region
-
-    ./util/list-all-non-default-resources.ps1 -region $commonConstants.region | Select-String "$($commonConstants.stackName)"
 }
+
+# ./util/list-all-non-default-resources.ps1 -region $commonConstants.region | Select-String -Pattern "$($commonConstants.stackName)-|$($commonConstants.stackNameMain)-"
 
 if ($deployFrontend) {
     ./deploy-frontend-distribution.ps1

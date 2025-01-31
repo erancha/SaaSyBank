@@ -10,13 +10,15 @@ try {
         $stackName = $appName
     }
     else {
-        $stackName = "${appName}f1"
+        $stackName = "${appName}f"
+        $stackNameMain = $appName
     }
 
     $appFolder = "$PSScriptRoot/../.."
     return @{
         isMainBranch          = $isMainBranch
         stackName             = $stackName
+        stackNameMain         = $stackNameMain
         configFilePath        = "${appFolder}/frontend/src/appConfig.json"
         lastDevConfigFilePath = "${appFolder}/frontend/appConfigDev.json"
         region                = "eu-central-1" # aws configure get region

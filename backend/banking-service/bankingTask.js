@@ -2,13 +2,13 @@ const express = require('express');
 const { Pool } = require('pg');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 
-const sqs = new SQSClient({ region: process.env.APP_AWS_REGION });
+const HTTP_SERVER_PORT = process.env.PORT || 3000;
 const app = express();
-const PORT = process.env.PORT || 3000;
-
 app.use(express.json());
 
-const pool = new Pool({
+const sqs = new SQSClient({ region: process.env.APP_AWS_REGION });
+
+const pgPool = new Pool({
   host: process.env.RDS_ENDPOINT,
   database: process.env.DB_NAME,
   user: process.env.DB_USERNAME,
@@ -18,16 +18,9 @@ const pool = new Pool({
     rejectUnauthorized: false, // TODO: Handle SSL before production!
   },
 });
-pool
-  .connect()
-  .then(() => console.log('Connected to database'))
-  .catch((err) => {
-    console.error('Database connection error', err);
-    process.exit(1); // Exit the process to indicate failure
-  });
 
 process.on('SIGINT', async () => {
-  await pool.end();
+  await pgPool.end();
   console.log('Pool has ended');
   process.exit(0);
 });
@@ -37,8 +30,17 @@ const bankingRouter = express.Router();
 app.use('/api/banking', bankingRouter);
 
 // Health check endpoint
-bankingRouter.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy' });
+bankingRouter.get('/health', async (req, res) => {
+  const client = await pgPool.connect();
+  try {
+    await client.query('SELECT NOW()'); // Simple query to check connection
+    res.status(200).json({ status: 'healthy' });
+  } catch (error) {
+    console.error('Database connection error:', error);
+    res.status(500).json({ status: 'ERROR', message: 'Database connection failed' });
+  } finally {
+    client.release();
+  }
 });
 
 // New endpoint: Create account
@@ -48,7 +50,7 @@ bankingRouter.post('/account', async (req, res) => {
     return res.status(400).json({ message: 'Account ID and Tenant ID are required' });
   }
 
-  const client = await pool.connect();
+  const client = await pgPool.connect();
   try {
     // Check if account already exists for the tenant
     const existingAccount = await client.query('SELECT account_id FROM accounts WHERE account_id = $1 AND tenant_id = $2', [accountId, tenantId]);
@@ -84,7 +86,7 @@ bankingRouter.get('/balance/:tenantId/:accountId', async (req, res) => {
     return res.status(400).json({ message: 'Both Tenant ID and Account ID are required' });
   }
 
-  const client = await pool.connect();
+  const client = await pgPool.connect();
   try {
     const result = await client.query('SELECT balance FROM accounts WHERE account_id = $1 AND tenant_id = $2', [accountId, tenantId]);
     if (result.rowCount === 0) {
@@ -111,7 +113,7 @@ bankingRouter.post('/deposit', async (req, res) => {
     return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
   }
 
-  const client = await pool.connect();
+  const client = await pgPool.connect();
   try {
     const result = await client.query('UPDATE accounts SET balance = balance + $1 WHERE account_id = $2 AND tenant_id = $3 RETURNING *', [
       amount,
@@ -139,7 +141,7 @@ bankingRouter.post('/withdraw', async (req, res) => {
     return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
   }
 
-  const client = await pool.connect();
+  const client = await pgPool.connect();
   try {
     const result = await client.query('UPDATE accounts SET balance = balance - $1 WHERE account_id = $2 AND tenant_id = $3 RETURNING *', [
       amount,
@@ -167,7 +169,7 @@ bankingRouter.post('/transfer', async (req, res) => {
     return res.status(400).json({ message: 'From Account ID, To Account ID, Tenant ID, and Amount are required' });
   }
 
-  const client = await pool.connect();
+  const client = await pgPool.connect();
   try {
     await client.query('BEGIN');
 
@@ -210,8 +212,8 @@ app.use((req, res) => {
   res.status(404).json({ message: 'Path not found' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Banking service is running on port ${PORT}`);
+app.listen(HTTP_SERVER_PORT, () => {
+  console.log(`Banking service is running on port ${HTTP_SERVER_PORT}`);
 });
 
 // Function to insert a message into an SQS queue

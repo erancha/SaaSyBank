@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: CloudFormation template to set up ECS Fargate in a public subnet.
+Description: CloudFormation template to set up ECS Fargate in a private subnet, accessing ECR thru VPC endpoints.
 
 Parameters:
   EcrImageUri:
@@ -18,58 +18,62 @@ Resources:
     Type: AWS::EC2::VPC
     Properties:
       CidrBlock: '10.0.0.0/16'
-      EnableDnsHostnames: true # Added to enable DNS support and hostnames in the VPC.
-      EnableDnsSupport: true # These settings are crucial for the private DNS feature of VPC endpoints to function properly. They allow your Lambda functions to resolve the AWS service endpoints to private IP addresses within your VPC.
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-VPC'
 
-  MyInternetGateway:
-    Type: AWS::EC2::InternetGateway
-    Properties:
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-IGW'
-
-  AttachMyIGWToMyVPC:
-    Type: AWS::EC2::VPCGatewayAttachment
-    Properties:
-      VpcId: !Ref MyVPC
-      InternetGatewayId: !Ref MyInternetGateway
-
-  MyRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref MyVPC
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-RTB'
-
-  MyRTBToMyIGWRoute:
-    # The route defined with 0.0.0.0/0 allows outbound traffic from resources in the associated subnets to the public internet.
-    # Responses to outbound requests are allowed back to those resources, effectively making the interaction appear bidirectional, as long as the security groups (SG) and network ACLs do not block that traffic.
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref MyRouteTable
-      DestinationCidrBlock: '0.0.0.0/0'
-      GatewayId: !Ref MyInternetGateway
-
-  MyPublicSubnet:
+  MyPrivateSubnet:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref MyVPC
       CidrBlock: '10.0.1.0/24'
       AvailabilityZone: !Select [0, !GetAZs '']
-      MapPublicIpOnLaunch: true
+      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-PublicSubnet'
+          Value: !Sub '${AWS::StackName}-PrivateSubnet'
 
-  MyPublicSubnetRouteTableAssociation:
+  MyPrivateSubnetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateRTB'
+
+  MyPrivateSubnetRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref MyPublicSubnet
-      RouteTableId: !Ref MyRouteTable
+      SubnetId: !Ref MyPrivateSubnet
+      RouteTableId: !Ref MyPrivateSubnetRouteTable
+
+  # VPC Endpoint for ECR API
+  MyVPCEndpointECR:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref MyVPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.api'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+
+  # VPC Endpoint for ECR Docker Registry
+  MyVPCEndpointECRD:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref MyVPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.dkr'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+
+  # VPC Endpoint for S3
+  MyVPCEndpointS3:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref MyVPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcEndpointType: Gateway
 
   # =============================
   # ECS
@@ -84,8 +88,8 @@ Resources:
     Properties:
       Family: MyTaskDefinition
       NetworkMode: awsvpc
-      Memory: '512' # Ensure this is a string
-      Cpu: '256' # Ensure this is a string
+      Memory: '512'
+      Cpu: '256'
       RequiresCompatibilities:
         - FARGATE
       ExecutionRoleArn: !GetAtt MyECSTaskExecutionRole.Arn
@@ -111,10 +115,10 @@ Resources:
       NetworkConfiguration:
         AwsvpcConfiguration:
           Subnets:
-            - !Ref MyPublicSubnet
+            - !Ref MyPrivateSubnet
           SecurityGroups:
             - !Ref MyECSServicesSG
-          AssignPublicIp: ENABLED
+          AssignPublicIp: DISABLED
 
   MyECSServicesSG:
     Type: AWS::EC2::SecurityGroup
@@ -167,8 +171,8 @@ Outputs:
     Description: 'VPC ID'
     Value: !Ref MyVPC
   PublicSubnetId:
-    Description: 'Public Subnet ID'
-    Value: !Ref MyPublicSubnet
+    Description: 'Private Subnet ID'
+    Value: !Ref MyPrivateSubnet
   ECSClusterName:
     Description: 'ECS Cluster Name'
     Value: !Ref MyECSCluster

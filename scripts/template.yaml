@@ -143,7 +143,7 @@ Resources:
         - Key: Name
           Value: !Sub '${AWS::StackName}-RTB'
 
-  RouteMyRTBToMyIGW:
+  MyRTBToMyIGWRoute:
     # The route defined with 0.0.0.0/0 allows outbound traffic from resources in the associated subnets to the public internet.
     # Responses to outbound requests are allowed back to those resources, effectively making the interaction appear bidirectional, as long as the security groups (SG) and network ACLs do not block that traffic.
     Type: AWS::EC2::Route
@@ -610,7 +610,7 @@ Resources:
     Properties:
       ClusterName: !Sub '${AWS::StackName}-Cluster'
 
-  MyECSExecutionRole:
+  MyECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -658,6 +658,8 @@ Resources:
   #----------------
   BankingECSLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Ref LogGroupName
       RetentionInDays: 1
@@ -695,7 +697,7 @@ Resources:
         - FARGATE
       Cpu: !Ref ECSContainerCpu
       Memory: !Ref ECSContainerMemory
-      ExecutionRoleArn: !GetAtt MyECSExecutionRole.Arn
+      ExecutionRoleArn: !GetAtt MyECSTaskExecutionRole.Arn
       TaskRoleArn: !GetAtt MyECSTaskRole.Arn
       ContainerDefinitions:
         - Name: 'banking-task'
@@ -1506,7 +1508,7 @@ Outputs:
 
   # ECSExecutionRoleArn:
   #   Description: 'ARN of the ECS Execution Role'
-  #   Value: !GetAtt MyECSExecutionRole.Arn
+  #   Value: !GetAtt MyECSTaskExecutionRole.Arn
 
   # ECSTaskRoleArn:
   #   Description: 'ARN of the ECS Task Role'

@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: CloudFormation template to set up ECS Fargate in a public subnet.
+Description: CloudFormation template to set up ECS Fargate in a private subnet, accessing ECR thru the public subnet.
 
 Parameters:
   EcrImageUri:
@@ -37,7 +37,7 @@ Resources:
       VpcId: !Ref MyVPC
       InternetGatewayId: !Ref MyInternetGateway
 
-  MyRouteTable:
+  MyPublicSubnetRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref MyVPC
@@ -50,7 +50,7 @@ Resources:
     # Responses to outbound requests are allowed back to those resources, effectively making the interaction appear bidirectional, as long as the security groups (SG) and network ACLs do not block that traffic.
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref MyRouteTable
+      RouteTableId: !Ref MyPublicSubnetRouteTable
       DestinationCidrBlock: '0.0.0.0/0'
       GatewayId: !Ref MyInternetGateway
 
@@ -69,7 +69,52 @@ Resources:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref MyPublicSubnet
-      RouteTableId: !Ref MyRouteTable
+      RouteTableId: !Ref MyPublicSubnetRouteTable
+
+  MyPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: '10.0.2.0/24'
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateSubnet'
+
+  MyPrivateSubnetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateRTB'
+
+  MyPrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MyPrivateSubnet
+      RouteTableId: !Ref MyPrivateSubnetRouteTable
+
+  MyNATGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  MyNATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt MyNATGatewayEIP.AllocationId
+      SubnetId: !Ref MyPublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-NATGateway'
+
+  MyPrivateSubnetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MyPrivateSubnetRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref MyNATGateway
 
   # =============================
   # ECS
@@ -84,8 +129,8 @@ Resources:
     Properties:
       Family: MyTaskDefinition
       NetworkMode: awsvpc
-      Memory: '512' # Ensure this is a string
-      Cpu: '256' # Ensure this is a string
+      Memory: '512'
+      Cpu: '256'
       RequiresCompatibilities:
         - FARGATE
       ExecutionRoleArn: !GetAtt MyECSTaskExecutionRole.Arn
@@ -111,22 +156,21 @@ Resources:
       NetworkConfiguration:
         AwsvpcConfiguration:
           Subnets:
-            - !Ref MyPublicSubnet
+            - !Ref MyPrivateSubnet
           SecurityGroups:
             - !Ref MyECSServicesSG
-          AssignPublicIp: ENABLED
+          AssignPublicIp: DISABLED
 
   MyECSServicesSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: 'Security Group of the ECS service'
       VpcId: !Ref MyVPC
-      SecurityGroupIngress: [] # In this test the ecs tasks are not accessed (e.g. by an ALB).
+      SecurityGroupIngress: []
       SecurityGroupEgress:
         - IpProtocol: '-1'
           CidrIp: 0.0.0.0/0
 
-  # Primarily responsible for allowing the ECS task to pull Docker images from Amazon ECR (Elastic Container Registry) and to send logs to Amazon CloudWatch Logs:
   MyECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -140,7 +184,6 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 
-  # Assigned to the ECS task itself and is used to grant it access to other AWS services that it needs to interact with while it is running:
   MyECSTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -159,7 +202,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - rds:DescribeDBInstances
-                  - rds:Connect # Note: This action is implied by VPC settings.
+                  - rds:Connect
                 Resource: '*'
 
 Outputs:
@@ -169,6 +212,9 @@ Outputs:
   PublicSubnetId:
     Description: 'Public Subnet ID'
     Value: !Ref MyPublicSubnet
+  PrivateSubnetId:
+    Description: 'Private Subnet ID'
+    Value: !Ref MyPrivateSubnet
   ECSClusterName:
     Description: 'ECS Cluster Name'
     Value: !Ref MyECSCluster

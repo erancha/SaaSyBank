@@ -47,7 +47,7 @@ try {
             $skipDockerBuildAndPush = $true
             if ($skipDockerBuildAndPush) {
                 Write-Host "Skipping docker build and push !" -ForegroundColor Yellow -BackgroundColor DarkGreen
-                $bankingDockerResults = @{ecrImageUri = "${accountId}.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:20241119-0002" }
+                $bankingDockerResults = @{ecrImageUri = "${accountId}.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:20250130-1538" }
             }
             else {
                 $bankingServiceName = "banking-service"
@@ -65,9 +65,9 @@ try {
                 $allowRDSPublicAccess = 'true'
             }
             $parameterOverrides = @(
-                # "ExistingVpcId='vpc-0d939650fa8310150'",
-                # "ExistingMyPublicSubnet1='subnet-07de4503d6e6ea118'",
-                # "ExistingMyPublicSubnet2='subnet-0d5b64a476d5d955a'",
+                "ExistingVpcId='vpc-057bb632445d06fc1'", # sb-VPC
+                "ExistingMyPublicSubnet1='subnet-0b261ba42c0b0bdd1'", # sb-PublicSubnet1
+                "ExistingMyPublicSubnet2='subnet-0cd7319f62a7a960d'", # sb-PublicSubnet2
                 # "ExistingUserPoolId='eu-central-1_OHq1aZYju'",
                 # "ExistingIdentityPoolId='eu-central-1:e9f848f2-a3ed-43f9-8ddb-833ca34233ba'",
                 # "ExistingCognitoDomain='ena-575491442067.auth.eu-central-1.amazoncognito.com'",
