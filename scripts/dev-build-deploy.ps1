@@ -44,18 +44,12 @@ try {
             $accountId = aws sts get-caller-identity --query "Account" --output text
             $ecrBankingRepositoryName = "banking-repository"
 
-            $skipDockerBuildAndPush = $true
-            if ($skipDockerBuildAndPush) {
-                Write-Host "Skipping docker build and push !" -ForegroundColor Yellow -BackgroundColor DarkGreen
-                $bankingDockerResults = @{ecrImageUri = "${accountId}.dkr.ecr.eu-central-1.amazonaws.com/${ecrBankingRepositoryName}:20250130-1538" }
-            }
-            else {
-                $bankingServiceName = "banking-service"
-                $bankingDockerResults = ./dev-build-push-docker-image.ps1 `
-                    -accountId $accountId `
-                    -ecrRepositoryName $ecrBankingRepositoryName `
-                    -serviceName $bankingServiceName
-            }
+            $bankingServiceName = "banking-service"
+            $bankingDockerResults = ./dev-build-push-docker-image.ps1 `
+                -skipDockerBuildAndPush $true `
+                -accountId $accountId `
+                -ecrRepositoryName $ecrBankingRepositoryName `
+                -serviceName $bankingServiceName
 
             $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
             Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Build completed. Deploying .."
@@ -83,6 +77,7 @@ try {
             }
             else {
                 # In feature branch, reuse the following resources from the main branch's stack:
+                $parameterOverrides += "LogGroupArn='arn:aws:logs:eu-central-1:575491442067:log-group:/aws/ecs/:*'"
             }
 
             # Join the parameter overrides into a single string

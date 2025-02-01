@@ -117,7 +117,7 @@ function Execute-Requests {
             $method = $request.Method
             $url = "${loadBalancerURL}$($request.Url)"
             $body = $request.Body
-
+        
             if (-not [string]::IsNullOrEmpty($body)) {
                 $bodyObject = $body | ConvertFrom-Json
                 $requestJson = $bodyObject | ConvertTo-Json -Compress
@@ -125,20 +125,33 @@ function Execute-Requests {
             else {
                 $requestJson = $request.Url
             }
-
+        
             # Send the request and capture the response
-            $response = ''
-            if ($method -eq "GET") {
-                $response = Invoke-RestMethod -Method $method -Uri $url
+            $responseJson = ''
+            try {
+                if ($method -eq "GET") {
+                    $response = Invoke-RestMethod -Method $method -Uri $url
+                }
+                else {
+                    $response = Invoke-RestMethod -Method $method -Uri $url -Body $body -ContentType "application/json"
+                }
+        
+                $responseJson = $response | ConvertTo-Json -Compress
+            } catch {
+                # Improved error logging
+                $errorMessage = $_.Exception.Message
+                $errorCategory = $_.Exception.GetType().FullName
+                $errorStackTrace = $_.ScriptStackTrace
+        
+                Write-Error "Error occurred while sending request: Method=$method, URL=$url"
+                Write-Error "Error Message: $errorMessage"
+                Write-Error "Error Category: $errorCategory"
+                Write-Error "Error Stack Trace: $errorStackTrace"
             }
-            else {
-                $response = Invoke-RestMethod -Method $method -Uri $url -Body $body -ContentType "application/json"
-            }
-
-            $responseJson = $response | ConvertTo-Json -Compress
+        
             Display-Output -title $request.Name -requestJson $requestJson -responseJson $responseJson -expectedResponse $request.ExpectedResponse
         }
-
+        
         $requests = @()
     }
 

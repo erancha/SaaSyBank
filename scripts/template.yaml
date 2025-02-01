@@ -35,6 +35,10 @@ Parameters:
     Type: String
     Description: 'Log group name for all ECS services'
     Default: '/aws/ecs/'
+  LogGroupArn:
+    Type: String
+    Description: 'Log group ARN for all ECS services (leave empty to create a new one)'
+    Default: ''
 
   BankingDatabaseName:
     Type: String
@@ -81,6 +85,7 @@ Conditions:
   AllowRDSPublicAccessCondition: !Equals
     - !Ref AllowRDSPublicAccess
     - 'true'
+  CreateLogGroup: !Equals [!Ref LogGroupArn, '']
 
 Resources:
   #==========================================================================================================================================================
@@ -110,8 +115,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-VPC'
-        - Key: MainRouteTable
-          Value: !Sub '${AWS::StackName}-MainRTB'
 
   MyInternetGateway:
     Type: AWS::EC2::InternetGateway
@@ -658,6 +661,7 @@ Resources:
   #----------------
   BankingECSLogGroup:
     Type: AWS::Logs::LogGroup
+    Condition: CreateLogGroup
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
@@ -712,7 +716,7 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: !Ref AWS::StackName
           Environment:
-            - Name: PORT
+            - Name: SERVER_PORT
               Value: !Ref ECSContainerPort
             - Name: RDS_ENDPOINT
               Value: !GetAtt MyRDSDBInstance.Endpoint.Address

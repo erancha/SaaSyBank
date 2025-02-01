@@ -1,33 +1,55 @@
 const express = require('express');
+const WebSocket = require('ws');
+
 const { Pool } = require('pg');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 
-const HTTP_SERVER_PORT = process.env.PORT || 3000;
-const app = express();
-app.use(express.json());
+const SERVER_PORT = process.env.SERVER_PORT || 3000;
 
-const sqs = new SQSClient({ region: process.env.APP_AWS_REGION });
-
-const pgPool = new Pool({
-  host: process.env.RDS_ENDPOINT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USERNAME,
-  password: process.env.DB_PASSWORD,
-  port: 5432,
-  ssl: {
-    rejectUnauthorized: false, // TODO: Handle SSL before production!
-  },
+const appRouter = express();
+appRouter.use(express.json());
+appRouter.listen(SERVER_PORT, () => {
+  console.log(`Banking service is running on port ${SERVER_PORT}`);
 });
 
-process.on('SIGINT', async () => {
-  await pgPool.end();
-  console.log('Pool has ended');
-  process.exit(0);
-});
+// Middleware to log elapsed time, query string, and post body if present
+const logElapsedTime = (req, res, next) => {
+  const startTime = Date.now();
+
+  // Capture query string
+  const queryString = Object.keys(req.query).length ? JSON.stringify(req.query) : null;
+
+  // Log the request when it's finished
+  res.on('finish', () => {
+    const elapsedTime = Date.now() - startTime;
+    let logMessage = `Elapsed time for ${req.method} ${req.path}: ${elapsedTime.toLocaleString()} ms`;
+
+    if (queryString) {
+      logMessage += ` | Query String: ${queryString}`;
+    }
+
+    console.log(logMessage);
+
+    // Log the POST body if it's a POST request
+    if (req.method === 'POST' && req.body) {
+      console.log(`POST Body: ${JSON.stringify(req.body)}`);
+    }
+  });
+
+  next();
+};
+
+appRouter.use(logElapsedTime);
+
+const wsServer = null; // new WebSocket.Server({ port: SERVER_PORT });
+
+//=========================================================================================================================
+// HTTP
+//=========================================================================================================================
 
 // Banking routes should be prefixed with /api/banking
 const bankingRouter = express.Router();
-app.use('/api/banking', bankingRouter);
+appRouter.use('/api/banking', bankingRouter);
 
 // Health check endpoint
 bankingRouter.get('/health', async (req, res) => {
@@ -207,16 +229,16 @@ bankingRouter.post('/transfer', async (req, res) => {
 });
 
 // Handle 404 for all other paths (not found)
-app.use((req, res) => {
+appRouter.use((req, res) => {
   console.error({ req, message: 'Path not found' });
   res.status(404).json({ message: 'Path not found' });
 });
 
-app.listen(HTTP_SERVER_PORT, () => {
-  console.log(`Banking service is running on port ${HTTP_SERVER_PORT}`);
-});
+//=========================================================================================================================
+// SQS
+//=========================================================================================================================
+const sqs = new SQSClient({ region: process.env.APP_AWS_REGION });
 
-// Function to insert a message into an SQS queue
 async function sendMessageToSQS(messageBody) {
   try {
     const data = await sqs.send(
@@ -232,4 +254,50 @@ async function sendMessageToSQS(messageBody) {
     console.error('Error sending message to SQS:', error);
     throw error;
   }
+}
+
+//=========================================================================================================================
+// postgreSQL
+//=========================================================================================================================
+const pgPool = new Pool({
+  host: process.env.RDS_ENDPOINT,
+  database: process.env.DB_NAME,
+  user: process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  port: 5432,
+  ssl: {
+    rejectUnauthorized: false, // TODO: Handle SSL before production!
+  },
+});
+
+process.on('SIGINT', async () => {
+  await pgPool.end();
+  console.log('Pool has ended');
+  process.exit(0);
+});
+
+//=========================================================================================================================
+// Web sockets
+//=========================================================================================================================
+if (wsServer) {
+  wsServer.on('connection', (socket) => {
+    console.log('New client connected');
+
+    // Send a welcome message to the client
+    socket.send('Welcome to the WebSocket wsServer!');
+
+    // Handle messages from clients
+    socket.on('message', (message) => {
+      console.log(`Received: ${message}`);
+      // Echo the message back to the client
+      socket.send(`You said: ${message}`);
+    });
+
+    // Handle client disconnection
+    socket.on('close', () => {
+      console.log('Client disconnected');
+    });
+  });
+
+  console.log(`WebSocket server is running on port ${SERVER_PORT}`);
 }

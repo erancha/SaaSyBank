@@ -6,7 +6,8 @@ param (
 . ./get-ElapsedTimeFormatted.ps1
 $startTime = Get-Date
 
-$commonConstants = . ../constants.ps1  # Make sure to dot-source the file correctly
+$scriptName = Split-Path -Leaf $PSCommandPath
+$commonConstants = . ../constants.ps1
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
 Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : $scriptName --region $($commonConstants.region) ..." -ForegroundColor White -BackgroundColor DarkBlue
 
