@@ -3,6 +3,7 @@ const WebSocket = require('ws');
 
 const { Pool } = require('pg');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
+const Redis = require('ioredis');
 
 const SERVER_PORT = process.env.SERVER_PORT || 3000;
 
@@ -55,8 +56,9 @@ appRouter.use('/api/banking', bankingRouter);
 bankingRouter.get('/health', async (req, res) => {
   const client = await pgPool.connect();
   try {
-    await client.query('SELECT NOW()'); // Simple query to check connection
-    res.status(200).json({ status: 'healthy' });
+    const now = await client.query('SELECT NOW()'); // Simple query to check connection
+    const keysCount = await testRedisConnectivity();
+    res.status(200).json({ status: `healthy. PG: '${now.rows[0].now}'. Redis: ${keysCount} keys.` });
   } catch (error) {
     console.error('Database connection error:', error);
     res.status(500).json({ status: 'ERROR', message: 'Database connection failed' });
@@ -257,6 +259,58 @@ async function sendMessageToSQS(messageBody) {
 }
 
 //=========================================================================================================================
+// Redis
+//=========================================================================================================================
+let _redisClient = null;
+const getRedisClient = () => {
+  if (!_redisClient) _redisClient = new Redis(process.env.ELASTICACHE_REDIS_ADDRESS);
+  return _redisClient;
+};
+const disposeRedisClient = async () => {
+  if (_redisClient) {
+    await _redisClient.quit();
+    _redisClient = null;
+  }
+};
+
+async function testRedisConnectivity() {
+  try {
+    const redisClient = getRedisClient();
+    const keys = await redisClient.keys('*');
+
+    if (keys.length > 0) {
+      console.log(`Found ${keys.length} keys :`);
+      keys.sort();
+
+      for (const key of keys) {
+        const type = await redisClient.type(key);
+        if (type === 'string') {
+          const value = await redisClient.get(key);
+          console.log(`${key.padEnd(35, ' ')}  ==>  ${value}`);
+        } else if (type === 'set') {
+          const members = await redisClient.smembers(key);
+          const MAX_KEY_LENGTH = 40;
+          console.log(
+            `${key.length < MAX_KEY_LENGTH ? key.padEnd(MAX_KEY_LENGTH, ' ') : `${key.substring(0, MAX_KEY_LENGTH - 2)}..`}  ==>  ${JSON.stringify(
+              members
+            )}`
+          );
+        } else if (type === 'list') {
+          const length = await redisClient.llen(key);
+          console.log(`${key.padEnd(25, ' ')} ==> ${length} items`);
+        } else {
+          console.log(`The value of '${key}' is '${type}' ! (not a string, set, or list)`);
+        }
+      }
+    }
+
+    return keys.length;
+  } catch (error) {
+    console.error('Redis Connectivity Test Failed:', error);
+  }
+}
+
+//=========================================================================================================================
 // postgreSQL
 //=========================================================================================================================
 const pgPool = new Pool({
@@ -268,12 +322,6 @@ const pgPool = new Pool({
   ssl: {
     rejectUnauthorized: false, // TODO: Handle SSL before production!
   },
-});
-
-process.on('SIGINT', async () => {
-  await pgPool.end();
-  console.log('Pool has ended');
-  process.exit(0);
 });
 
 //=========================================================================================================================
@@ -301,3 +349,16 @@ if (wsServer) {
 
   console.log(`WebSocket server is running on port ${SERVER_PORT}`);
 }
+
+//=========================================================================================================================
+// Cleanup
+//=========================================================================================================================
+const cleanup = async () => {
+  await disposeRedisClient();
+  if (pgPool) await pgPool.end();
+  console.log('Closed PostgreSQL and Redis pools.');
+  process.exit(0);
+};
+
+process.on('SIGINT', cleanup);
+process.on('SIGTERM', cleanup);

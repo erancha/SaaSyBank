@@ -46,7 +46,7 @@ try {
 
             $bankingServiceName = "banking-service"
             $bankingDockerResults = ./dev-build-push-docker-image.ps1 `
-                -skipDockerBuildAndPush $true `
+                -skipDockerBuildAndPush $false `
                 -accountId $accountId `
                 -ecrRepositoryName $ecrBankingRepositoryName `
                 -serviceName $bankingServiceName
@@ -55,31 +55,23 @@ try {
             Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Build completed. Deploying .."
 
             # Build the parameter overrides string dynamically
-            if ($commonConstants.isMainBranch -ne $true) {
-                $allowRDSPublicAccess = 'true'
-            }
             $parameterOverrides = @(
                 "ExistingVpcId='vpc-08016eb77e7ac9962'", # en-VPC
-                # "ExistingIgwId='igw-00adf0d24a3f4cbf7'", # sb-IGW
-                # "ExistingRtbId='rtb-02107f409c2b8b47b'", # sb-RTB
-                # "ExistingMyPublicSubnet1='subnet-05a83e59965d06dc4'", # sb-PublicSubnet1
-                # "ExistingMyPublicSubnet2='subnet-0106501170e02a985'", # sb-PublicSubnet2
+                "ExistingIgwId='igw-0fd7e050083dec0b9'", # sb-IGW
                 # "ExistingUserPoolId='eu-central-1_OHq1aZYju'",
                 # "ExistingIdentityPoolId='eu-central-1:e9f848f2-a3ed-43f9-8ddb-833ca34233ba'",
                 # "ExistingCognitoDomain='ena-575491442067.auth.eu-central-1.amazoncognito.com'",
                 # "ExistingNotesEncryptionKeyId='d0efc261-b71d-4f5c-9686-9876cc664243'",
-                # "ExistingElasticacheRedisClusterAddress='en-elasticache-redis-cluster.hz2zez.0001.euc1.cache.amazonaws.com:6379'",
+                "ExistingElasticacheRedisClusterAddress='en-elasticache-redis-cluster.hz2zez.0001.euc1.cache.amazonaws.com:6379'",
                 "BankingServiceName='$bankingServiceName'",
-                "BankingTaskEcrImageUri='$($bankingDockerResults.ecrImageUri)'",
-                "AllowRDSPublicAccess='$allowRDSPublicAccess'"
+                "BankingTaskEcrImageUri='$($bankingDockerResults.ecrImageUri)'"
             )
 
             if ($commonConstants.isMainBranch) {
-                $parameterOverrides += "StageName='prod'"
+                $parameterOverrides += "DeployForProduction='true'"
             }
             else {
                 # In feature branch, reuse the following resources from the main branch's stack:
-                $parameterOverrides += "LogGroupArn='arn:aws:logs:eu-central-1:575491442067:log-group:/aws/ecs/:*'"
             }
 
             # Join the parameter overrides into a single string

@@ -15,18 +15,10 @@ Parameters:
     Type: String
     Description: 'ID of an existing IGW (leave empty to create a new one)'
     Default: ''
-  ExistingRtbId:
+
+  ExistingElasticacheRedisClusterAddress:
     Type: String
-    Description: 'ID of the existing RTB (leave empty to create new RTB and subnets)'
-    Default: ''
-  ExistingMyPublicSubnet1:
-    Type: String
-    Description: 'ID of the existing PublicSubnet1'
-    Default: ''
-  ExistingMyPublicSubnet2:
-    Type: String
-    Description: 'ID of the existing PublicSubnet2'
-    Default: ''
+    Description: 'Address of an existing Redis cluster'
 
   # ExistingUserPoolId:
   #   Type: String
@@ -42,11 +34,7 @@ Parameters:
   LogGroupName:
     Type: String
     Description: 'Log group name for all ECS services'
-    Default: '/aws/ecs/'
-  LogGroupArn:
-    Type: String
-    Description: 'Log group ARN for all ECS services (leave empty to create a new one)'
-    Default: ''
+    Default: '/aws/ecs'
 
   BankingDatabaseName:
     Type: String
@@ -82,28 +70,25 @@ Parameters:
     Default: 5
     Description: The maximal number of instantiations of the specified task definition to place and keep running in your service.
 
-  AllowRDSPublicAccess:
+  DeployForProduction:
     Type: String
     Default: 'false'
     AllowedValues: ['true', 'false', '']
-    Description: "Set to 'true' to allow public access to the RDS instance (recommended only for development)."
+    Description: "Set to 'true' to deploy for production."
 
 Conditions:
   CreateVpc: !Equals [!Ref ExistingVpcId, ''] # VPC
   CreateIgw: !Equals [!Ref ExistingIgwId, ''] # Internet gateway
-  CreateRtbAndSubnets: !Equals [!Ref ExistingRtbId, ''] # Create RTB and subnets
-  AllowRDSPublicAccessCondition: !Equals
-    - !Ref AllowRDSPublicAccess
+  DeployForProductionCondition: !Equals
+    - !Ref DeployForProduction
     - 'true'
-  CreateLogGroup: !Equals [!Ref LogGroupArn, '']
 
 Resources:
   #==========================================================================================================================================================
   # Networking resources:
   #  - 2 public subnets for an ALB, allowing inbound traffic only on port 80 (initially), from any ip, and outbound traffic only to the ECS' SG.
-  #  - (WIP) 2 private subnets for ECS, allowing inbound traffic only from the ALB's SG, and outbound traffic only to the ECR's and RDS's SGs.
-  #  - (WIP) 2 private subnets for RDS, allowing inbound traffic only from the ECS's SG, and outbound traffic only to the RDS service.
-  #  - (WIP) ECS' tasks require private access to retrieve images from ECR thru three vpc endpoints: two to ECR (interface) and one to S3 (gateway).
+  #  - 2 private subnets for ECS, allowing inbound traffic only from the ALB's SG, and outbound traffic only to the ECR's and RDS's SGs.
+  #  - 2 private subnets for RDS, allowing inbound traffic only from the ECS's SG, and outbound traffic only to the RDS service.
   #==========================================================================================================================================================
   # Traffic Flow Overview
   #   Client to ALB: The client sends a request to the ALB on port 80.
@@ -139,41 +124,43 @@ Resources:
   AttachMyIGWToMyVPC:
     Type: AWS::EC2::VPCGatewayAttachment
     Condition: CreateIgw
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
       VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       InternetGatewayId: !Ref MyInternetGateway
 
-  MyRouteTable:
+  MyPublicRouteTable1:
     Type: AWS::EC2::RouteTable
-    Condition: CreateRtbAndSubnets
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
       VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-RTB'
+          Value: !Sub '${AWS::StackName}-publicRTB1'
     # TODO: pl-66a5400f , pl-6ea54007
-
-  MyRTBToMyIGWRoute:
-    # The route defined with 0.0.0.0/0 allows outbound traffic from resources in the associated subnets to the public internet.
-    # Responses to outbound requests are allowed back to those resources, effectively making the interaction appear bidirectional, as long as the security groups (SG) and network ACLs do not block that traffic.
-    Type: AWS::EC2::Route
-    Condition: CreateRtbAndSubnets
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
+  MyPublicRouteTable2:
+    Type: AWS::EC2::RouteTable
     Properties:
-      RouteTableId: !Ref MyRouteTable
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-publicRTB2'
+
+  # The route defined with 0.0.0.0/0 allows outbound traffic from resources in the associated subnets to the public internet.
+  # Responses to outbound requests are allowed back to those resources, effectively making the interaction appear bidirectional, as long as the security groups (SG) and network ACLs do not block that traffic.
+  MyPublicRTB1ToMyIGWRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MyPublicRouteTable1
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !If [CreateIgw, !Ref MyInternetGateway, !Ref ExistingIgwId]
+  MyPublicRTB2ToMyIGWRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MyPublicRouteTable2
       DestinationCidrBlock: '0.0.0.0/0'
       GatewayId: !If [CreateIgw, !Ref MyInternetGateway, !Ref ExistingIgwId]
 
   MyPublicSubnet1:
     Type: AWS::EC2::Subnet
-    Condition: CreateRtbAndSubnets
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
       VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       CidrBlock: 10.0.3.0/24
@@ -184,9 +171,6 @@ Resources:
           Value: !Sub '${AWS::StackName}-PublicSubnet1'
   MyPublicSubnet2:
     Type: AWS::EC2::Subnet
-    Condition: CreateRtbAndSubnets
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
       VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       CidrBlock: 10.0.4.0/24
@@ -196,22 +180,16 @@ Resources:
         - Key: Name
           Value: !Sub '${AWS::StackName}-PublicSubnet2'
 
-  AssociateMyPublicSubnet1ToMyRTB:
+  MyPublicSubnetToMyRTBAssociation1:
     Type: AWS::EC2::SubnetRouteTableAssociation
-    Condition: CreateRtbAndSubnets
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
       SubnetId: !Ref MyPublicSubnet1
-      RouteTableId: !Ref MyRouteTable
-  AssociateMyPublicSubnet2ToMyRTB:
+      RouteTableId: !Ref MyPublicRouteTable1
+  MyPublicSubnetToMyRTBAssociation2:
     Type: AWS::EC2::SubnetRouteTableAssociation
-    Condition: CreateRtbAndSubnets
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
       SubnetId: !Ref MyPublicSubnet2
-      RouteTableId: !Ref MyRouteTable
+      RouteTableId: !Ref MyPublicRouteTable2
 
   MyALBSG:
     Type: AWS::EC2::SecurityGroup
@@ -219,45 +197,13 @@ Resources:
       GroupDescription: 'Allow HTTP access. TODO: Handle SSL before production!'
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-MyALBSG'
+          Value: !Sub '${AWS::StackName}-ALB-SG'
       VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80 # 443 TODO: Handle SSL before production!
           ToPort: 80 # 443 TODO: Handle SSL before production!
           CidrIp: 0.0.0.0/0
-
-  # ECS, ECR - private subnets
-  #---------------------------
-  # MyECSPrivateSubnet1:
-  #   Type: AWS::EC2::Subnet
-  #   Properties:
-  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
-  #     CidrBlock: 10.0.5.0/24
-  #     AvailabilityZone: !Select [0, !GetAZs '']
-  #     Tags:
-  #       - Key: Name
-  #         Value: !Sub '${AWS::StackName}-MyECSPrivateSubnet1'
-  # MyECSPrivateSubnet2:
-  #   Type: AWS::EC2::Subnet
-  #   Properties:
-  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
-  #     CidrBlock: 10.0.6.0/24
-  #     AvailabilityZone: !Select [1, !GetAZs '']
-  #     Tags:
-  #       - Key: Name
-  #         Value: !Sub '${AWS::StackName}-MyECSPrivateSubnet2'
-
-  # AssociateMyECSPrivateSubnet1ToMyRTB: # to access the vpc endpoints above (maybe only the S3 gateway endpoint?)
-  #   Type: AWS::EC2::SubnetRouteTableAssociation
-  #   Properties:
-  #     SubnetId: !Ref MyECSPrivateSubnet1
-  #     RouteTableId: !Ref MyRouteTable
-  # AssociateMyECSPrivateSubnet2ToMyRTB: # to access the vpc endpoints above (maybe only the S3 gateway endpoint?)
-  #   Type: AWS::EC2::SubnetRouteTableAssociation
-  #   Properties:
-  #     SubnetId: !Ref MyECSPrivateSubnet2
-  #     RouteTableId: !Ref MyRouteTable
 
   MyECSServicesSG:
     Type: AWS::EC2::SecurityGroup
@@ -269,9 +215,19 @@ Resources:
           FromPort: !Ref ECSContainerPort # Port your container listens on, e.g., 8080
           ToPort: !Ref ECSContainerPort # Port your container listens on, e.g., 8080
           SourceSecurityGroupId: !Ref MyALBSG
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 6379 # redis
+          ToPort: 6379
+          CidrIp: 0.0.0.0/0
+        # - IpProtocol: tcp
+        #   FromPort: 443 # DDB and SQS
+        #   ToPort: 443
+        #   CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-ECS-SG'
+
   MyECSServicesEgressRule:
     Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ECS to Allow Traffic to ECR
     Properties:
@@ -280,6 +236,7 @@ Resources:
       FromPort: 443
       ToPort: 443
       CidrIp: 0.0.0.0/0
+
   MyALBEgressRule:
     Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ALB to Allow Traffic to ECS Services.
     Properties:
@@ -289,34 +246,13 @@ Resources:
       ToPort: !Ref ECSContainerPort
       DestinationSecurityGroupId: !Ref MyECSServicesSG
 
-  # RDS
-  #-------------
-  # MyRDSPrivateSubnet1:
-  #   Type: AWS::EC2::Subnet
-  #   Properties:
-  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
-  #     CidrBlock: 10.0.7.0/24
-  #     AvailabilityZone: !Select [0, !GetAZs '']
-  #     Tags:
-  #       - Key: Name
-  #         Value: !Sub '${AWS::StackName}-MyRDSPrivateSubnet1'
-  # MyRDSPrivateSubnet2:
-  #   Type: AWS::EC2::Subnet
-  #   Properties:
-  #     VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
-  #     CidrBlock: 10.0.8.0/24
-  #     AvailabilityZone: !Select [1, !GetAZs '']
-  #     Tags:
-  #       - Key: Name
-  #         Value: !Sub '${AWS::StackName}-MyRDSPrivateSubnet2'
-
   MyRDSSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: RDS Security Group
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-MyRDSSG'
+          Value: !Sub '${AWS::StackName}-RDS-SG'
       VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -491,8 +427,8 @@ Resources:
     Properties:
       Name: !Sub '${AWS::StackName}-ALB'
       Subnets:
-        - !If [CreateRtbAndSubnets, !Ref MyPublicSubnet1, !Ref ExistingMyPublicSubnet1]
-        - !If [CreateRtbAndSubnets, !Ref MyPublicSubnet2, !Ref ExistingMyPublicSubnet2]
+        - !Ref MyPublicSubnet1
+        - !Ref MyPublicSubnet2
       SecurityGroups:
         - !Ref MyALBSG
       Scheme: internet-facing
@@ -569,8 +505,92 @@ Resources:
   #           MessageBody: 'Authenticated'
 
   #==========================================================================================================================================================
-  # Fargate for ECS: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html
+  # ECS Fargate: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html
   #==========================================================================================================================================================
+  MyECSPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      CidrBlock: 10.0.5.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ECSPrivateSubnet1'
+  MyECSPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      CidrBlock: 10.0.6.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ECSPrivateSubnet2'
+
+  MyPrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateRTB1'
+  MyPrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateRTB2'
+
+  MyECSPrivateSubnetToMyPrivateRTBAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MyECSPrivateSubnet1
+      RouteTableId: !Ref MyPrivateRouteTable1
+  MyECSPrivateSubnetToMyPrivateRTBAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MyECSPrivateSubnet2
+      RouteTableId: !Ref MyPrivateRouteTable2
+
+  MyNATGatewayEIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  MyNATGatewayEIP2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  MyNATGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt MyNATGatewayEIP1.AllocationId
+      SubnetId: !Ref MyPublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-NATGateway1'
+  MyNATGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt MyNATGatewayEIP2.AllocationId
+      SubnetId: !Ref MyPublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-NATGateway2'
+
+  MyPrivateSubnet1Route:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MyPrivateRouteTable1
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref MyNATGateway1
+  MyPrivateSubnet2Route:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MyPrivateRouteTable2
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref MyNATGateway2
+
   MyECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -588,15 +608,6 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
-      # Policies:
-      #   - PolicyName: AllowCreateLogGroup # TODO: Currently the deployment manually creates the log group: LogGroupName
-      #     PolicyDocument:
-      #       Version: '2012-10-17'
-      #       Statement:
-      #         - Effect: Allow
-      #           Action:
-      #             - logs:CreateLogGroup
-      #           Resource: '*'
 
   MyECSTaskRole:
     Type: AWS::IAM::Role
@@ -624,11 +635,8 @@ Resources:
   #----------------
   BankingECSLogGroup:
     Type: AWS::Logs::LogGroup
-    Condition: CreateLogGroup
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Properties:
-      LogGroupName: !Ref LogGroupName
+      LogGroupName: !Sub '${LogGroupName}/${AWS::StackName}'
       RetentionInDays: 1
 
   BankingALBListenerRule:
@@ -675,7 +683,7 @@ Resources:
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: !Ref LogGroupName
+              awslogs-group: !Sub '${LogGroupName}/${AWS::StackName}'
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: !Ref AWS::StackName
           Environment:
@@ -693,6 +701,8 @@ Resources:
               Value: !Ref AWS::Region
             - Name: SQS_QUEUE_URL
               Value: !Ref BankingExecutedTransactionsQueue
+            - Name: ELASTICACHE_REDIS_ADDRESS
+              Value: !Ref ExistingElasticacheRedisClusterAddress
 
   BankingECSService:
     Type: AWS::ECS::Service
@@ -708,11 +718,9 @@ Resources:
           SecurityGroups:
             - !Ref MyECSServicesSG
           Subnets:
-            # - !Ref MyECSPrivateSubnet1 # TODO
-            # - !Ref MyECSPrivateSubnet2 # TODO
-            - !If [CreateRtbAndSubnets, !Ref MyPublicSubnet1, !Ref ExistingMyPublicSubnet1]
-            - !If [CreateRtbAndSubnets, !Ref MyPublicSubnet2, !Ref ExistingMyPublicSubnet2]
-          AssignPublicIp: ENABLED
+            - !Ref MyECSPrivateSubnet1
+            - !Ref MyECSPrivateSubnet2
+          AssignPublicIp: DISABLED
       DeploymentConfiguration:
         MaximumPercent: 200
         MinimumHealthyPercent: 100
@@ -729,101 +737,6 @@ Resources:
       FifoQueue: true
       ContentBasedDeduplication: true
 
-  TransactionsLoggerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: transactionsLogger.handler
-      Runtime: nodejs20.x
-      CodeUri: ../backend/transactions-logger/
-      Layers:
-        - !Ref pgLayer
-        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:NotesEncryptionLayer:240' # TODO: Adjust the security group
-        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:IoredisLayer:37' # TODO: Adjust the security group
-      Environment:
-        Variables:
-          RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
-          DB_NAME: !Ref BankingDatabaseName
-          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
-      Role: !GetAtt TransactionsLoggerFunctionExecutionRole.Arn
-      Events: # event source mapping
-        SQSTrigger:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt BankingExecutedTransactionsQueue.Arn
-            BatchSize: 10
-            Enabled: true
-      VpcConfig:
-        SubnetIds:
-          - !If [CreateRtbAndSubnets, !Ref MyPublicSubnet1, !Ref ExistingMyPublicSubnet1]
-          - !If [CreateRtbAndSubnets, !Ref MyPublicSubnet2, !Ref ExistingMyPublicSubnet2]
-        SecurityGroupIds:
-          - !Ref MyECSServicesSG
-
-  TransactionsLoggerFunctionExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
-      Policies:
-        - PolicyName: SQSReceiveMessagePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - sqs:ReceiveMessage
-                  - sqs:DeleteMessage
-                  - sqs:GetQueueAttributes
-                Resource: !GetAtt BankingExecutedTransactionsQueue.Arn
-        - PolicyName: RDSAccessPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - rds:DescribeDBInstances
-                  - rds:Connect
-                Resource: '*'
-        # - PolicyName: DynamoReadOnlyDBAccess
-        #   PolicyDocument:
-        #     Version: '2012-10-17'
-        #     Statement:
-        #       - Effect: Allow
-        #         Action:
-        #           - dynamodb:Query
-        #           - dynamodb:Scan
-        #           - dynamodb:GetItem
-        #         Resource:
-        #           - 'arn:aws:dynamodb:eu-central-1:575491442067:table/ena-users'
-        #           - 'arn:aws:dynamodb:eu-central-1:575491442067:table/ena-users/index/UserIdIndex'
-        # - PolicyName: KMSAccess
-        #   PolicyDocument:
-        #     Version: '2012-10-17'
-        #     Statement:
-        #       - Effect: Allow
-        #         Action:
-        #           - kms:Encrypt
-        #           - kms:Decrypt
-        #           - kms:GenerateDataKey
-        #         Resource: 'arn:aws:kms:eu-central-1:575491442067:key/d0efc261-b71d-4f5c-9686-9876cc664243'
-        # - PolicyName: ElastiCacheAccess
-        #   PolicyDocument:
-        #     Version: '2012-10-17'
-        #     Statement:
-        #       - Effect: Allow
-        #         Action:
-        #           - 'elasticache:DescribeCacheClusters'
-        #           - 'elasticache:DescribeReplicationGroups'
-        #         Resource: '*'
-
   #==========================================================================================================================================================
   # TODO: Alternate EKS (Kubernetes) with Fargate deployment: https://docs.aws.amazon.com/eks/latest/userguide/fargate.html.
   #==========================================================================================================================================================
@@ -831,6 +744,25 @@ Resources:
   #==========================================================================================================================================================
   # RDS
   #==========================================================================================================================================================
+  MyRDSPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      CidrBlock: 10.0.7.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-RDSPrivateSubnet1'
+  MyRDSPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      CidrBlock: 10.0.8.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-RDSPrivateSubnet2'
+
   MyRDSDBInstance:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -846,7 +778,8 @@ Resources:
         - !Ref MyRDSSG
       DBName: !Ref BankingDatabaseName
       BackupRetentionPeriod: 0 # Set to 0 to disable automated backups retention
-      PubliclyAccessible: !If [AllowRDSPublicAccessCondition, true, false]
+      PubliclyAccessible: !If [DeployForProductionCondition, false, true]
+      MultiAZ: !If [DeployForProductionCondition, true, false] # Enable Multi-AZ for high availability
     DeletionPolicy: Delete # This applies when the stack is deleted; ensure no final snapshot is created.
 
   MyRDSSubnetGroup:
@@ -854,10 +787,8 @@ Resources:
     Properties:
       DBSubnetGroupDescription: !Sub '${AWS::StackName}-RDSSubnetGroup'
       SubnetIds:
-        # - !Ref MyRDSPrivateSubnet1 # TODO
-        # - !Ref MyRDSPrivateSubnet2 # TODO
-        - !If [CreateRtbAndSubnets, !Ref MyPublicSubnet1, !Ref ExistingMyPublicSubnet1]
-        - !If [CreateRtbAndSubnets, !Ref MyPublicSubnet2, !Ref ExistingMyPublicSubnet2]
+        - !Ref MyRDSPrivateSubnet1
+        - !Ref MyRDSPrivateSubnet2
       DBSubnetGroupName: !Sub '${AWS::StackName}-RDSSubnetGroup'
 
   MyCreateTablesLambdaExecutionRole:
@@ -900,527 +831,75 @@ Resources:
           DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
       VpcConfig:
         SubnetIds:
-          - !If [CreateRtbAndSubnets, !Ref MyPublicSubnet1, !Ref ExistingMyPublicSubnet1]
-          - !If [CreateRtbAndSubnets, !Ref MyPublicSubnet2, !Ref ExistingMyPublicSubnet2]
+          - !Ref MyRDSPrivateSubnet1
+          - !Ref MyRDSPrivateSubnet2
         SecurityGroupIds:
           - !Ref MyECSServicesSG
       Role: !GetAtt MyCreateTablesLambdaExecutionRole.Arn
 
-  #==========================================================================================================================================================
-  # Cloudwatch dashboard
-  #==========================================================================================================================================================
-  # MyDashboard:
-  #   Type: AWS::CloudWatch::Dashboard
-  #   Properties:
-  #     DashboardName: !Sub '${AWS::StackName}-Dashboard'
-  #     DashboardBody:
-  #       Fn::Sub: |
-  #         {
-  #             "widgets": [
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 12,
-  #                     "x": 18,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 300,
-  #                         "metrics": [
-  #                             [ "AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "${MyRDSDBInstance}", { "label": "${MyRDSDBInstance}" } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Average",
-  #                         "title": "CPUUtilization",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 6,
-  #                     "x": 18,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 300,
-  #                         "metrics": [
-  #                             [ "AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", "${MyRDSDBInstance}", { "label": "${MyRDSDBInstance}" } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Average",
-  #                         "title": "DatabaseConnections",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 18,
-  #                     "x": 18,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 300,
-  #                         "metrics": [
-  #                             [ "AWS/RDS", "FreeableMemory", "DBInstanceIdentifier", "${MyRDSDBInstance}", { "label": "${MyRDSDBInstance}" } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Average",
-  #                         "title": "FreeableMemory",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 0,
-  #                     "x": 0,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Average",
-  #                         "title": "Target Response Time",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 0,
-  #                     "x": 6,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "RequestCount", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Requests",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 42,
-  #                     "x": 6,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Target 5XXs",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 36,
-  #                     "x": 6,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTPCode_Target_4XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Target 4XXs",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 6,
-  #                     "x": 0,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_5XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "ELB 5XXs",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 12,
-  #                     "x": 12,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_4XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "ELB 4XXs",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 12,
-  #                     "x": 0,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_500_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "ELB 500s",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 18,
-  #                     "x": 0,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_502_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "ELB 502s",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 24,
-  #                     "x": 0,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_503_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "ELB 503s",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 30,
-  #                     "x": 0,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTPCode_ELB_504_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "ELB 504s",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 24,
-  #                     "x": 18,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "TargetConnectionErrorCount", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Target connection errors",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 12,
-  #                     "x": 6,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "RejectedConnectionCount", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Sum rejected connections",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 30,
-  #                     "x": 6,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTPCode_Target_3XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Target 3XXs",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 24,
-  #                     "x": 6,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTPCode_Target_2XX_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Target 2XXs",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 6,
-  #                     "x": 6,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "ActiveConnectionCount", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Active Connection Count",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 18,
-  #                     "x": 12,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "NewConnectionCount", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "New Connection Count",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 6,
-  #                     "x": 12,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "ProcessedBytes", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Processed Bytes",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 0,
-  #                     "x": 12,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "ConsumedLCUs", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Consumed Load Balancer Capacity Units",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 24,
-  #                     "x": 12,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "HTTP_Fixed_Response_Count", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "HTTP fixed response count",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 18,
-  #                     "x": 6,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "period": 60,
-  #                         "metrics": [
-  #                             [ "AWS/ApplicationELB", "LambdaTargetProcessedBytes", "LoadBalancer", "${MyALB.LoadBalancerFullName}", { "label": "${MyALB.Name}", "visible": true } ]
-  #                         ],
-  #                         "region": "eu-central-1",
-  #                         "stat": "Sum",
-  #                         "title": "Lambda Target Processed Bytes",
-  #                         "yAxis": {
-  #                             "left": {
-  #                                 "min": 0
-  #                             }
-  #                         }
-  #                     }
-  #                 },
-  #                 {
-  #                     "height": 6,
-  #                     "width": 6,
-  #                     "y": 0,
-  #                     "x": 18,
-  #                     "type": "metric",
-  #                     "properties": {
-  #                         "metrics": [
-  #                             [ "AWS/ECS", "CPUUtilization", "ServiceName", "${BankingECSService.Name}", "ClusterName", "${MyECSCluster}", { "stat": "Minimum" } ],
-  #                             [ "...", { "stat": "Maximum" } ],
-  #                             [ "...", { "stat": "Average" } ]
-  #                         ],
-  #                         "period": 300,
-  #                         "region": "eu-central-1",
-  #                         "stacked": false,
-  #                         "title": "ECS CPU utilization",
-  #                         "view": "timeSeries"
-  #                     }
-  #                 }
-  #             ]
-  #         }
+  TransactionsLoggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: transactionsLogger.handler
+      Runtime: nodejs20.x
+      CodeUri: ../backend/transactions-logger/
+      Layers:
+        - !Ref pgLayer
+        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:NotesEncryptionLayer:240' # TODO: Adjust the security group
+        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:IoredisLayer:37' # TODO: Adjust the security group
+      Environment:
+        Variables:
+          RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
+          DB_NAME: !Ref BankingDatabaseName
+          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+      Role: !GetAtt TransactionsLoggerFunctionExecutionRole.Arn
+      Events: # event source mapping
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt BankingExecutedTransactionsQueue.Arn
+            BatchSize: 10
+            Enabled: true
+      VpcConfig:
+        SubnetIds:
+          - !Ref MyRDSPrivateSubnet1
+          - !Ref MyRDSPrivateSubnet2
+        SecurityGroupIds:
+          - !Ref MyECSServicesSG
+
+  TransactionsLoggerFunctionExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: SQSReceiveMessagePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt BankingExecutedTransactionsQueue.Arn
+        - PolicyName: RDSAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:Connect
+                Resource: '*'
 
 Outputs:
   MyVPCId:
@@ -1432,21 +911,6 @@ Outputs:
     Description: 'The ID of the Internet Gateway'
     Value: !Ref MyInternetGateway
     Condition: CreateIgw
-
-  MyRtbId:
-    Description: 'The ID of the Route Table'
-    Value: !Ref MyRouteTable
-    Condition: CreateRtbAndSubnets
-
-  PublicSubnet1Id:
-    Description: 'ID of the first public subnet'
-    Value: !Ref MyPublicSubnet1
-    Condition: CreateRtbAndSubnets
-
-  PublicSubnet2Id:
-    Description: 'ID of the second public subnet'
-    Value: !Ref MyPublicSubnet2
-    Condition: CreateRtbAndSubnets
 
   # ALBSecurityGroupId:
   #   Description: 'ID of the ALB Security Group'
