@@ -80,7 +80,7 @@ exports.handler = async (event) => {
           ]);
         }
       } catch (recordError) {
-        console.error(`Error processing a record: ${recordError}`);
+        console.error(`Error processing a record: ${record.body}: ${recordError}`);
         // Consider sending to dead-letter queue
       }
     }

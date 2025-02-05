@@ -81,6 +81,11 @@ function Execute-Requests {
                     Body   = @{ "accountId" = $toAccountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
                 },
                 @{
+                    Name   = "Get all Accounts"
+                    Method = "GET"
+                    Url    = "/api/banking/accounts/$tenantId"
+                },
+                @{
                     Name   = "Deposit"
                     Method = "POST"
                     Url    = "/api/banking/deposit"
@@ -109,6 +114,11 @@ function Execute-Requests {
                     Method           = "GET"
                     Url              = "/api/banking/balance/$tenantId/$toAccountId"
                     ExpectedResponse = '{"message":"Balance retrieved successfully","accountId":"' + $toAccountId + '","balance":"200.00"}'
+                },
+                @{
+                    Name             = "Get all Transactions"
+                    Method           = "GET"
+                    Url              = "/api/banking/transactions/$tenantId/$accountId"
                 }
             )
         }
@@ -172,7 +182,7 @@ $initRequests = @(
     @{
         Name   = "Health Check"
         Method = "GET"
-        Url    = "/api/banking/health"
+        Url    = "/api/banking/health?redis=true"
     }
 )
 Execute-Requests -loadBalancerURL $loadBalancerURL -requests $initRequests

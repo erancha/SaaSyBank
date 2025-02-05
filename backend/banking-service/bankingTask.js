@@ -1,17 +1,21 @@
+const http = require('http');
 const express = require('express');
 const WebSocket = require('ws');
-
-const { Pool } = require('pg');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const Redis = require('ioredis');
+const { onWebsocketConnect, CURRENT_TASK_ID } = require('./websocketHandlers');
+const { testRedisConnectivity, disposeRedisClient } = require('./redisClient');
+const dbData = require('./dbData');
 
-const SERVER_PORT = process.env.SERVER_PORT || 3000;
+const app = express();
+const httpServer = http.createServer(app);
+const SERVER_PORT = process.env.SERVER_PORT || 4000;
+httpServer.listen(SERVER_PORT, () => console.log(`Banking service is running on port ${SERVER_PORT}`));
 
-const appRouter = express();
-appRouter.use(express.json());
-appRouter.listen(SERVER_PORT, () => {
-  console.log(`Banking service is running on port ${SERVER_PORT}`);
-});
+// Enable the parsing of incoming JSON payloads in HTTP requests
+app.use(express.json());
+
+const websocketServer = new WebSocket.Server({ server: httpServer });
+websocketServer.on('connection', onWebsocketConnect);
 
 // Middleware to log elapsed time, query string, and post body if present
 const logElapsedTime = (req, res, next) => {
@@ -23,12 +27,8 @@ const logElapsedTime = (req, res, next) => {
   // Log the request when it's finished
   res.on('finish', () => {
     const elapsedTime = Date.now() - startTime;
-    let logMessage = `Elapsed time for ${req.method} ${req.path}: ${elapsedTime.toLocaleString()} ms`;
-
-    if (queryString) {
-      logMessage += ` | Query String: ${queryString}`;
-    }
-
+    let logMessage = `Task ${CURRENT_TASK_ID}: Elapsed time for ${req.method} ${req.path}: ${elapsedTime.toLocaleString()} ms`;
+    if (queryString) logMessage += ` | Query String: ${queryString}`;
     console.log(logMessage);
 
     // Log the POST body if it's a POST request
@@ -39,10 +39,7 @@ const logElapsedTime = (req, res, next) => {
 
   next();
 };
-
-appRouter.use(logElapsedTime);
-
-const wsServer = null; // new WebSocket.Server({ port: SERVER_PORT });
+app.use(logElapsedTime);
 
 //=========================================================================================================================
 // HTTP
@@ -50,46 +47,39 @@ const wsServer = null; // new WebSocket.Server({ port: SERVER_PORT });
 
 // Banking routes should be prefixed with /api/banking
 const bankingRouter = express.Router();
-appRouter.use('/api/banking', bankingRouter);
+app.use('/api/banking', bankingRouter);
 
 // Health check endpoint
 bankingRouter.get('/health', async (req, res) => {
-  const client = await pgPool.connect();
   try {
-    const now = await client.query('SELECT NOW()'); // Simple query to check connection
-    const keysCount = await testRedisConnectivity();
-    res.status(200).json({ status: `healthy. PG: '${now.rows[0].now}'. Redis: ${keysCount} keys.` });
+    const now = await dbData.healthCheck();
+    let keysCount = null;
+
+    if (req.query.redis === 'true') keysCount = await testRedisConnectivity();
+
+    res.status(200).json({
+      status: `healthy ; PG: ${now}` + (keysCount !== null ? ` ; Redis: ${keysCount} keys.` : ''),
+    });
   } catch (error) {
-    console.error('Database connection error:', error);
-    res.status(500).json({ status: 'ERROR', message: 'Database connection failed' });
-  } finally {
-    client.release();
+    console.error('Connection error(s):', error);
+    res.status(500).json({ status: 'ERROR', message: 'Connection error(s)' });
   }
 });
 
-// New endpoint: Create account
+// Create account
 bankingRouter.post('/account', async (req, res) => {
   const { accountId, initialBalance = 0, tenantId } = req.body;
   if (!accountId || !tenantId) {
     return res.status(400).json({ message: 'Account ID and Tenant ID are required' });
   }
 
-  const client = await pgPool.connect();
   try {
-    // Check if account already exists for the tenant
-    const existingAccount = await client.query('SELECT account_id FROM accounts WHERE account_id = $1 AND tenant_id = $2', [accountId, tenantId]);
-    if (existingAccount.rowCount > 0) {
+    const result = await dbData.createAccount(accountId, initialBalance, tenantId);
+    if (result.rowCount === 0) {
       return res.status(409).json({ message: 'Account already exists' });
     }
 
-    // Create new account
-    const result = await client.query('INSERT INTO accounts (account_id, balance, tenant_id) VALUES ($1, $2, $3) RETURNING *', [
-      accountId,
-      initialBalance,
-      tenantId,
-    ]);
-
-    sendMessageToSQS({ path: req.path, body: req.body });
+    queueExecutedTransaction({ path: req.path, body: req.body });
 
     res.status(201).json({
       message: 'Account created successfully',
@@ -98,8 +88,29 @@ bankingRouter.post('/account', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error creating account' });
-  } finally {
-    client.release();
+  }
+});
+
+// List all accounts
+bankingRouter.get('/accounts/:tenantId', async (req, res) => {
+  const { tenantId } = req.params;
+  if (!tenantId) {
+    return res.status(400).json({ message: 'Tenant ID is required' });
+  }
+
+  try {
+    const result = await dbData.listAccounts(tenantId);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'No accounts found for this tenant' });
+    }
+
+    res.json({
+      message: 'Accounts retrieved successfully',
+      accounts: result.rows,
+    });
+  } catch (error) {
+    console.error('Error retrieving accounts:', error);
+    res.status(500).json({ message: 'Error retrieving accounts' });
   }
 });
 
@@ -110,9 +121,8 @@ bankingRouter.get('/balance/:tenantId/:accountId', async (req, res) => {
     return res.status(400).json({ message: 'Both Tenant ID and Account ID are required' });
   }
 
-  const client = await pgPool.connect();
   try {
-    const result = await client.query('SELECT balance FROM accounts WHERE account_id = $1 AND tenant_id = $2', [accountId, tenantId]);
+    const result = await dbData.getBalance(tenantId, accountId);
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Account not found' });
     }
@@ -125,8 +135,6 @@ bankingRouter.get('/balance/:tenantId/:accountId', async (req, res) => {
   } catch (error) {
     console.error('Error retrieving balance:', error);
     res.status(500).json({ message: 'Error retrieving balance' });
-  } finally {
-    client.release();
   }
 });
 
@@ -137,24 +145,17 @@ bankingRouter.post('/deposit', async (req, res) => {
     return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
   }
 
-  const client = await pgPool.connect();
   try {
-    const result = await client.query('UPDATE accounts SET balance = balance + $1 WHERE account_id = $2 AND tenant_id = $3 RETURNING *', [
-      amount,
-      accountId,
-      tenantId,
-    ]);
+    const result = await dbData.deposit(amount, accountId, tenantId);
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Account not found' });
     }
     res.json({ message: 'Deposit successful', account: result.rows[0] });
 
-    sendMessageToSQS({ path: req.path, body: req.body });
+    queueExecutedTransaction({ path: req.path, body: req.body });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error processing deposit' });
-  } finally {
-    client.release();
   }
 });
 
@@ -165,24 +166,17 @@ bankingRouter.post('/withdraw', async (req, res) => {
     return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
   }
 
-  const client = await pgPool.connect();
   try {
-    const result = await client.query('UPDATE accounts SET balance = balance - $1 WHERE account_id = $2 AND tenant_id = $3 RETURNING *', [
-      amount,
-      accountId,
-      tenantId,
-    ]);
+    const result = await dbData.withdraw(amount, accountId, tenantId);
     if (result.rowCount === 0 || result.rows[0].balance < 0) {
       return res.status(400).json({ message: 'Insufficient funds or account not found' });
     }
     res.json({ message: 'Withdraw successful', account: result.rows[0] });
 
-    sendMessageToSQS({ path: req.path, body: req.body });
+    queueExecutedTransaction({ path: req.path, body: req.body });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error processing withdrawal' });
-  } finally {
-    client.release();
   }
 });
 
@@ -193,59 +187,59 @@ bankingRouter.post('/transfer', async (req, res) => {
     return res.status(400).json({ message: 'From Account ID, To Account ID, Tenant ID, and Amount are required' });
   }
 
-  const client = await pgPool.connect();
   try {
-    await client.query('BEGIN');
-
-    const withdrawResult = await client.query('UPDATE accounts SET balance = balance - $1 WHERE account_id = $2 AND tenant_id = $3 RETURNING *', [
-      amount,
-      fromAccountId,
-      tenantId,
-    ]);
-    if (withdrawResult.rowCount === 0 || withdrawResult.rows[0].balance < 0) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ message: 'From account not found or Insufficient funds' });
+    const transferResult = await dbData.transfer(amount, fromAccountId, toAccountId, tenantId);
+    if (transferResult.error) {
+      return res.status(400).json({ message: transferResult.error });
     }
 
-    const depositResult = await client.query('UPDATE accounts SET balance = balance + $1 WHERE account_id = $2 AND tenant_id = $3 RETURNING *', [
-      amount,
-      toAccountId,
-      tenantId,
-    ]);
-    if (depositResult.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ message: 'To account not found' });
-    }
+    res.json({
+      message: 'Transfer successful',
+      fromAccount: transferResult.fromAccount,
+      toAccount: transferResult.toAccount,
+    });
 
-    await client.query('COMMIT');
-    res.json({ message: 'Transfer successful', fromAccount: withdrawResult.rows[0], toAccount: depositResult.rows[0] });
-
-    sendMessageToSQS({ path: req.path, body: req.body });
+    queueExecutedTransaction({ path: req.path, body: req.body });
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error(error);
     res.status(500).json({ message: 'Error processing transfer' });
-  } finally {
-    client.release();
+  }
+});
+
+// Handle get all transactions for an account
+bankingRouter.get('/transactions/:tenantId/:accountId', async (req, res) => {
+  const { accountId, tenantId } = req.params;
+
+  if (!accountId || !tenantId) {
+    return res.status(400).json({ message: 'Account ID and Tenant ID are required' });
+  }
+
+  try {
+    const transactions = await dbData.getAllTransactions(accountId, tenantId);
+    res.json({ transactions });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error retrieving transactions' });
   }
 });
 
 // Handle 404 for all other paths (not found)
-appRouter.use((req, res) => {
+app.use((req, res) => {
   console.error({ req, message: 'Path not found' });
   res.status(404).json({ message: 'Path not found' });
 });
 
 //=========================================================================================================================
-// SQS
+// SQS - queueing executed transactions data
 //=========================================================================================================================
-const sqs = new SQSClient({ region: process.env.APP_AWS_REGION });
+const sqsClient = new SQSClient({ region: process.env.APP_AWS_REGION });
 
-async function sendMessageToSQS(messageBody) {
+async function queueExecutedTransaction(messageBody) {
+  const EXECUTED_TRANSACTIONS_QUEUE_URL = process.env.EXECUTED_TRANSACTIONS_QUEUE_URL;
   try {
-    const data = await sqs.send(
+    const data = await sqsClient.send(
       new SendMessageCommand({
-        QueueUrl: process.env.SQS_QUEUE_URL,
+        QueueUrl: EXECUTED_TRANSACTIONS_QUEUE_URL,
         MessageGroupId: 'Default', // Required for FIFO queues
         MessageBody: JSON.stringify(messageBody),
       })
@@ -253,110 +247,15 @@ async function sendMessageToSQS(messageBody) {
     // console.log(`Message sent to SQS: ${data.MessageId}`);
     return data;
   } catch (error) {
-    console.error('Error sending message to SQS:', error);
+    console.error(`Error sending message to SQS queue ${EXECUTED_TRANSACTIONS_QUEUE_URL}:`, error);
     throw error;
   }
 }
 
-//=========================================================================================================================
-// Redis
-//=========================================================================================================================
-let _redisClient = null;
-const getRedisClient = () => {
-  if (!_redisClient) _redisClient = new Redis(process.env.ELASTICACHE_REDIS_ADDRESS);
-  return _redisClient;
-};
-const disposeRedisClient = async () => {
-  if (_redisClient) {
-    await _redisClient.quit();
-    _redisClient = null;
-  }
-};
-
-async function testRedisConnectivity() {
-  try {
-    const redisClient = getRedisClient();
-    const keys = await redisClient.keys('*');
-
-    if (keys.length > 0) {
-      console.log(`Found ${keys.length} keys :`);
-      keys.sort();
-
-      for (const key of keys) {
-        const type = await redisClient.type(key);
-        if (type === 'string') {
-          const value = await redisClient.get(key);
-          console.log(`${key.padEnd(35, ' ')}  ==>  ${value}`);
-        } else if (type === 'set') {
-          const members = await redisClient.smembers(key);
-          const MAX_KEY_LENGTH = 40;
-          console.log(
-            `${key.length < MAX_KEY_LENGTH ? key.padEnd(MAX_KEY_LENGTH, ' ') : `${key.substring(0, MAX_KEY_LENGTH - 2)}..`}  ==>  ${JSON.stringify(
-              members
-            )}`
-          );
-        } else if (type === 'list') {
-          const length = await redisClient.llen(key);
-          console.log(`${key.padEnd(25, ' ')} ==> ${length} items`);
-        } else {
-          console.log(`The value of '${key}' is '${type}' ! (not a string, set, or list)`);
-        }
-      }
-    }
-
-    return keys.length;
-  } catch (error) {
-    console.error('Redis Connectivity Test Failed:', error);
-  }
-}
-
-//=========================================================================================================================
-// postgreSQL
-//=========================================================================================================================
-const pgPool = new Pool({
-  host: process.env.RDS_ENDPOINT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USERNAME,
-  password: process.env.DB_PASSWORD,
-  port: 5432,
-  ssl: {
-    rejectUnauthorized: false, // TODO: Handle SSL before production!
-  },
-});
-
-//=========================================================================================================================
-// Web sockets
-//=========================================================================================================================
-if (wsServer) {
-  wsServer.on('connection', (socket) => {
-    console.log('New client connected');
-
-    // Send a welcome message to the client
-    socket.send('Welcome to the WebSocket wsServer!');
-
-    // Handle messages from clients
-    socket.on('message', (message) => {
-      console.log(`Received: ${message}`);
-      // Echo the message back to the client
-      socket.send(`You said: ${message}`);
-    });
-
-    // Handle client disconnection
-    socket.on('close', () => {
-      console.log('Client disconnected');
-    });
-  });
-
-  console.log(`WebSocket server is running on port ${SERVER_PORT}`);
-}
-
-//=========================================================================================================================
-// Cleanup
-//=========================================================================================================================
 const cleanup = async () => {
   await disposeRedisClient();
-  if (pgPool) await pgPool.end();
-  console.log('Closed PostgreSQL and Redis pools.');
+  await dbData.disposeClient();
+  console.log(`Task ${CURRENT_TASK_ID}: Closed PostgreSQL and Redis pools.`);
   process.exit(0);
 };
 

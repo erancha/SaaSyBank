@@ -20,7 +20,7 @@ try {
     Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : $scriptName --region $region ..." -ForegroundColor White -BackgroundColor DarkBlue
     # to search, use: | Select-String string-to-search | Measure-Object
 
-    #======= Define an array to hold the resource listing ========================================
+    #======= Define an array to hold the resource listing =======================================
     $nonDefaultResources = @()
 
     #======== List VPCs and filter out default VPCs =============================================
@@ -39,7 +39,19 @@ try {
         }
     }
 
-    #======== List Route Tables and filter out default route tables ============================
+    #======== List NAT Gateways =================================================================
+    $natGateways = aws ec2 describe-nat-gateways --region $region --query "NatGateways[?Tags[?Key=='Name']].{ID:NatGatewayId, Name:Tags[?Key=='Name'].Value | [0], VpcId:VpcId, State:State}" --output json | ConvertFrom-Json
+    foreach ($natGateway in $natGateways) {
+        $nonDefaultResources += "NAT Gateway:  $($natGateway.Name.PadRight(20)) : $($natGateway.ID) , VPC ID: $($natGateway.VpcId) , State: $($natGateway.State)"
+    }
+
+    #======== List NAT Instances ================================================================
+    $natInstances = aws ec2 describe-instances --region $region --query "Reservations[*].Instances[?Tags[?Key=='NAT' && Value=='true']].{ID:InstanceId,Name:Tags[?Key=='Name'][0].Value}" --output json | ConvertFrom-Json
+    foreach ($natInstance in $natInstances) {
+        $nonDefaultResources += "NAT Instance: $($natInstance.Name.PadRight(25)) : $($natInstance.ID)"
+    }
+
+    #======== List Route Tables and filter out default route tables =============================
     $routeTables = aws ec2 describe-route-tables --region $region --query "RouteTables[?Tags[?Key=='Name']].{ID:RouteTableId, Name:Tags[?Key=='Name'].Value | [0], VpcId:VpcId}" --output json | ConvertFrom-Json
     foreach ($rt in $routeTables) {
         if ($rt.Name -and $rt.Name -notlike "*!!! Default RTB !!!*") {
@@ -47,7 +59,7 @@ try {
         }
     }
 
-    #======== List Elastic IPs ===================================================================
+    #======== List Elastic IPs ==================================================================
     $elasticIps = aws ec2 describe-addresses --region $region --query "Addresses[].{IP:PublicIp, AllocationId:AllocationId}" --output json | ConvertFrom-Json
     foreach ($eip in $elasticIps) {
         $nonDefaultResources += "Elastic IP: $($eip.IP) - Allocation ID: $($eip.AllocationId)"
@@ -64,7 +76,7 @@ try {
         $nonDefaultResources += "VPC Endpoint (Gateway)   : $($gatewayEndpoint.ID) , Service Name: $($gatewayEndpoint.ServiceName)"
     }
 
-    #======== List Internet Gateways and filter out default IGWs ===========================
+    #======== List Internet Gateways and filter out default IGWs ================================
     $internetGateways = aws ec2 describe-internet-gateways --region $region --query "InternetGateways[?Tags[?Key=='Name']].{ID:InternetGatewayId, VpcId:Attachments[0].VpcId, Name:Tags[?Key=='Name'].Value | [0]}" --output json | ConvertFrom-Json
     foreach ($igw in $internetGateways) {
         if ($igw.Name -and $igw.Name -notlike "*!!! Default IGW !!!*") {

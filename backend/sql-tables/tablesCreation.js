@@ -40,23 +40,37 @@ exports.handler = async (event) => {
 
     await dbClient.connect();
 
+    // Drop existing tables if event.dropTables is true
+    if (event.dropTables) {
+      const dropTablesQuery = `
+        DROP TABLE IF EXISTS accounts;
+        DROP TABLE IF EXISTS accountTransactions;
+      `;
+      await dbClient.query(dropTablesQuery);
+      console.log('Existing tables dropped.');
+    }
+
     // Create table(s)
     const createTableQuery = `
-            CREATE TABLE IF NOT EXISTS accounts (
-                id SERIAL PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                account_id TEXT NOT NULL,
-                balance DECIMAL(10, 2) NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS accountTransactions (
-                id SERIAL PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                account_id TEXT NOT NULL,
-                transaction BYTEA NOT NULL
-            );
-        `;
+        CREATE TABLE IF NOT EXISTS accounts (
+            id SERIAL,
+            tenant_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            balance DECIMAL(10, 2) NOT NULL,
+            PRIMARY KEY (tenant_id, account_id)
+        );
+        
+        CREATE TABLE IF NOT EXISTS accountTransactions (
+            id SERIAL,
+            tenant_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            transaction BYTEA NOT NULL,
+            PRIMARY KEY (tenant_id, account_id, id)
+        );
+    `;
 
     await dbClient.query(createTableQuery);
+    console.log('Tables created.');
 
     const TENANT_ID = 'tenant1';
     const ACCOUNT_ID = 'account123';

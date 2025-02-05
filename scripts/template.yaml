@@ -3,6 +3,11 @@ Transform: AWS::Serverless-2016-10-31
 Description: SaaSyBank application.
 
 Parameters:
+  TenantId:
+    Type: String
+    Description: 'Tenant ID'
+    Default: 'tenant1'
+
   ExistingVpcId:
     Type: String
     Description: 'ID of an existing VPC (leave empty to create a new one)'
@@ -63,7 +68,7 @@ Parameters:
     Description: Memory in MB for the container
   ECSDesiredCount:
     Type: Number
-    Default: 1
+    Default: 2
     Description: The number of instantiations of the specified task definition to place and keep running in your service.
   ECSMaxCount:
     Type: Number
@@ -596,7 +601,7 @@ Resources:
     Properties:
       ClusterName: !Sub '${AWS::StackName}-Cluster'
 
-  MyECSTaskExecutionRole:
+  MyECSTaskExecutionRole: # This role is assumed by the ECS task to pull images from Amazon ECR and to send logs to Amazon CloudWatch.
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -609,7 +614,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 
-  MyECSTaskRole:
+  MyECSTaskRole: # This role is assumed by the containers in the ECS task to interact with AWS services.
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -622,7 +627,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonECS_FullAccess
       Policies:
-        - PolicyName: SQSSendMessagePolicy
+        - PolicyName: SQSExecutedTransactionsPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -699,10 +704,14 @@ Resources:
               Value: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
             - Name: APP_AWS_REGION
               Value: !Ref AWS::Region
-            - Name: SQS_QUEUE_URL
+            - Name: EXECUTED_TRANSACTIONS_QUEUE_URL
               Value: !Ref BankingExecutedTransactionsQueue
             - Name: ELASTICACHE_REDIS_ADDRESS
               Value: !Ref ExistingElasticacheRedisClusterAddress
+            - Name: TENANT_ID
+              Value: !Ref TenantId
+            - Name: STACK_NAME
+              Value: !Ref AWS::StackName
 
   BankingECSService:
     Type: AWS::ECS::Service
@@ -736,6 +745,71 @@ Resources:
       QueueName: !Sub '${AWS::StackName}-executedTransactionsQueue.fifo'
       FifoQueue: true
       ContentBasedDeduplication: true
+
+  TransactionsLoggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: transactionsLogger.handler
+      Runtime: nodejs20.x
+      CodeUri: ../backend/transactions-logger/
+      Layers:
+        - !Ref pgLayer
+        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:NotesEncryptionLayer:240' # TODO: Adjust the security group
+        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:IoredisLayer:37' # TODO: Adjust the security group
+      Environment:
+        Variables:
+          RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
+          DB_NAME: !Ref BankingDatabaseName
+          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+      Role: !GetAtt TransactionsLoggerFunctionExecutionRole.Arn
+      Events: # event source mapping
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt BankingExecutedTransactionsQueue.Arn
+            BatchSize: 10
+            Enabled: true
+      VpcConfig:
+        SubnetIds:
+          - !Ref MyRDSPrivateSubnet1
+          - !Ref MyRDSPrivateSubnet2
+        SecurityGroupIds:
+          - !Ref MyECSServicesSG
+
+  TransactionsLoggerFunctionExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: SQSReceiveMessagePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource:
+                  - !GetAtt BankingExecutedTransactionsQueue.Arn
+        - PolicyName: RDSAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:Connect
+                Resource: '*'
 
   #==========================================================================================================================================================
   # TODO: Alternate EKS (Kubernetes) with Fargate deployment: https://docs.aws.amazon.com/eks/latest/userguide/fargate.html.
@@ -837,70 +911,6 @@ Resources:
           - !Ref MyECSServicesSG
       Role: !GetAtt MyCreateTablesLambdaExecutionRole.Arn
 
-  TransactionsLoggerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: transactionsLogger.handler
-      Runtime: nodejs20.x
-      CodeUri: ../backend/transactions-logger/
-      Layers:
-        - !Ref pgLayer
-        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:NotesEncryptionLayer:240' # TODO: Adjust the security group
-        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:IoredisLayer:37' # TODO: Adjust the security group
-      Environment:
-        Variables:
-          RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
-          DB_NAME: !Ref BankingDatabaseName
-          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
-      Role: !GetAtt TransactionsLoggerFunctionExecutionRole.Arn
-      Events: # event source mapping
-        SQSTrigger:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt BankingExecutedTransactionsQueue.Arn
-            BatchSize: 10
-            Enabled: true
-      VpcConfig:
-        SubnetIds:
-          - !Ref MyRDSPrivateSubnet1
-          - !Ref MyRDSPrivateSubnet2
-        SecurityGroupIds:
-          - !Ref MyECSServicesSG
-
-  TransactionsLoggerFunctionExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
-      Policies:
-        - PolicyName: SQSReceiveMessagePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - sqs:ReceiveMessage
-                  - sqs:DeleteMessage
-                  - sqs:GetQueueAttributes
-                Resource: !GetAtt BankingExecutedTransactionsQueue.Arn
-        - PolicyName: RDSAccessPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - rds:DescribeDBInstances
-                  - rds:Connect
-                Resource: '*'
-
 Outputs:
   MyVPCId:
     Description: 'The ID of the VPC'
@@ -912,29 +922,9 @@ Outputs:
     Value: !Ref MyInternetGateway
     Condition: CreateIgw
 
-  # ALBSecurityGroupId:
-  #   Description: 'ID of the ALB Security Group'
-  #   Value: !Ref MyALBSG
-
   LoadBalancerURL:
     Description: 'LoadBalancer URL'
     Value: !Sub 'http://${MyALB.DNSName}'
-
-  # ECSSecurityGroupId:
-  #   Description: 'ID of the ECS Security Group'
-  #   Value: !Ref MyECSServicesSG
-
-  # ECSExecutionRoleArn:
-  #   Description: 'ARN of the ECS Execution Role'
-  #   Value: !GetAtt MyECSTaskExecutionRole.Arn
-
-  # ECSTaskRoleArn:
-  #   Description: 'ARN of the ECS Task Role'
-  #   Value: !GetAtt MyECSTaskRole.Arn
-
-  # ECSServiceName:
-  #   Description: 'Name of the ECS service'
-  #   Value: !Ref BankingECSService
 
   RDSInstanceEndpoint:
     Description: 'RDS Instance Endpoint'
