@@ -15,20 +15,19 @@ User authentication is securely managed through Google.
 <!-- toc -->
 
 - [High-Level Design (HLD) Document for SaaSyBank](#high-level-design-hld-document-for-saasybank)
-  * [Overview](#overview)
-  * [Architecture Diagram](#architecture-diagram)
-  * [Components](#components)
-    + [1. **Backend**](#1-backend)
-      - [2.1 **Application Load Balancer (ALB)**](#21-application-load-balancer-alb)
-      - [2.2 **ECS with Fargate**](#22-ecs-with-fargate)
-      - [2.3 **RDS with PostgreSQL**](#23-rds-with-postgresql)
-      - [2.4 **SQS**](#24-sqs)
-    + [2. **Frontend**](#2-frontend)
-    + [3. Security Considerations](#3-security-considerations)
-    + [4. Scalability, Performance and Resiliency](#4-scalability-performance-and-resiliency)
-    + [5. Flexible **Deployment**](#5-flexible-deployment)
-    + [6. Monitoring & Logging](#6-monitoring--logging)
-  * [Summary](#summary)
+  - [Overview](#overview)
+  - [Architecture](#architecture)
+    - [1. **Backend**](#1-backend)
+      - [1.1 **Application Load Balancer (ALB)**](#11-application-load-balancer-alb)
+      - [1.2 **ECS with Fargate**](#12-ecs-with-fargate)
+      - [1.3 **RDS with PostgreSQL**](#13-rds-with-postgresql)
+      - [1.4 **SQS**](#14-sqs)
+    - [2. **Frontend**](#2-frontend)
+    - [3. Security Considerations](#3-security-considerations)
+    - [4. Scalability, Performance and Resiliency](#4-scalability-performance-and-resiliency)
+    - [5. Flexible **Deployment**](#5-flexible-deployment)
+    - [6. Monitoring & Logging](#6-monitoring--logging)
+  - [Summary](#summary)
 
 <!-- tocstop -->
 
@@ -46,41 +45,31 @@ User authentication is securely managed through Google.
 - **Response Time**:
   Responsiveness of less than 5 seconds for API calls.
 
-**Frontend**: N/A (a Postman collection is provided for REST API).
-
-<small>**Note**: This is a deployable AWS architecture exercise.</small>
-
----
-
-## Architecture Diagram
+## Architecture
 
 ![Architecture Diagram](https://lucid.app/publicSegments/view/69c70e24-cb99-4f28-8cf9-59329f1bc55b/image.jpeg)
 
----
-
-## Components
-
 ### 1. **Backend**
 
-#### 2.1 **Application Load Balancer (ALB)**
+#### **Application Load Balancer (ALB)**
 
 - **Purpose**: Distribute API requests
 - **SLA**: Auto-scales for high availability
 
-#### 2.2 **ECS with Fargate**
+#### **ECS with Fargate**
 
 - **Objective**: Run containerized applications for banking functionalities
 - **Network**: Deployed in private subnets
 
-#### 2.3 **RDS with PostgreSQL**
+#### **RDS with PostgreSQL**
 
 - **Purpose**: Store accounts data
 - **Network**: Managed RDS instance in private subnets
 - **Backup**: Automated backups enabled
 
-#### 2.4 **SQS**
+#### **SQS**
 
-- **Purpose**: To separate the processes of transaction encryption and saving from the core online banking functionalities managed by ECS. The ECS Fargate task is designed to handle only the immediate updating of transaction details in RDS, such as tenant ID, account ID, amount, and target account ID (for transfers). This allows for a quicker response time, as the ECS task can return the result of the transaction immediately without being burdened by the additional overhead of encryption and saving, which will be processed asynchronously through SQS.
+- **Purpose**: To separate the processes of transaction encryption and saving from the core online banking functionalities managed by ECS. The ECS Fargate task is designed to handle only the immediate updating of transaction details in RDS. This allows for a quicker response time, as the ECS task can return the result of the transaction immediately without being burdened by the additional overhead of encryption and saving, which will be processed asynchronously through SQS by a dedicated **Lambda** function.
 
 ### 2. **Frontend**
 
