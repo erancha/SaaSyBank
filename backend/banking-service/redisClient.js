@@ -52,15 +52,23 @@ async function testRedisConnectivity() {
           const members = await redisClient.smembers(key);
           const MAX_KEY_LENGTH = 40;
           console.log(
-            `${key.length < MAX_KEY_LENGTH ? key.padEnd(MAX_KEY_LENGTH, ' ') : `${key.substring(0, MAX_KEY_LENGTH - 2)}..`}  ==>  ${JSON.stringify(
-              members
-            )}`
+            `${key.length < MAX_KEY_LENGTH ? key.padEnd(MAX_KEY_LENGTH, ' ') : `${key.substring(0, MAX_KEY_LENGTH - 2)}..`}  ==>  ${JSON.stringify(members)}`
           );
         } else if (type === 'list') {
           const length = await redisClient.llen(key);
           console.log(`${key.padEnd(25, ' ')} ==> ${length} items`);
+        } else if (type === 'hash') {
+          const fields = await redisClient.hkeys(key);
+          const fieldValues = {};
+
+          for (const field of fields) {
+            const value = await redisClient.hget(key, field);
+            fieldValues[field] = value;
+          }
+
+          console.log(`Hash ${key} : ${JSON.stringify(fieldValues)}`);
         } else {
-          console.log(`The value of '${key}' is '${type}' ! (not a string, set, or list)`);
+          console.log(`The value of '${key}' is '${type}' ! (not a string, set, list, or hash)`);
         }
       }
     }

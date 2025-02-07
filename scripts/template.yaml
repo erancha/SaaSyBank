@@ -25,16 +25,27 @@ Parameters:
     Type: String
     Description: 'Address of an existing Redis cluster'
 
-  # ExistingUserPoolId:
-  #   Type: String
-  #   Description: Existing Cognito User Pool ID.
-  # ExistingIdentityPoolId:
-  #   Type: String
-  #   Description: Existing Cognito Identity Pool ID.
-  # ExistingCognitoDomain:
-  #   Description: 'Existing Cognito Domain.'
-  #   Type: String
-  #   Default: ''
+  CustomDomainName:
+    Description: 'The custom domain name (optional)'
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$'
+    ConstraintDescription: 'Must be a valid domain name or empty'
+  CertificateArn:
+    Description: 'Certificate ARN for the custom domain (optional)'
+    Type: String
+    Default: ''
+  ExistingUserPoolId:
+    Description: 'ID of an existing Cognito User Pool'
+    Type: String
+  ExistingCognitoDomain:
+    Description: 'Existing Cognito Domain'
+    Type: String
+  AllowS3PublicAccess:
+    Description: 'Allow public access to the S3 bucket'
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
 
   LogGroupName:
     Type: String
@@ -81,12 +92,23 @@ Parameters:
     AllowedValues: ['true', 'false', '']
     Description: "Set to 'true' to deploy for production."
 
+  AdminUserId:
+    Description: 'User id of the admin'
+    Type: String
+    Default: '53b408f2-d071-70e2-f4da-24618fa52c03' # bettyadm100@gmail.com TODO: Allow to configure from the app
+
 Conditions:
   CreateVpc: !Equals [!Ref ExistingVpcId, ''] # VPC
   CreateIgw: !Equals [!Ref ExistingIgwId, ''] # Internet gateway
   DeployForProductionCondition: !Equals
     - !Ref DeployForProduction
     - 'true'
+  HasCustomDomainName: !Not [!Equals [!Ref CustomDomainName, '']]
+  HasCertificateArn: !Not [!Equals [!Ref CertificateArn, '']]
+  UseCustomDomain: !And
+    - !Condition HasCustomDomainName
+    - !Condition HasCertificateArn
+  AllowS3PublicAccessCondition: !Equals [!Ref AllowS3PublicAccess, 'true']
 
 Resources:
   #==========================================================================================================================================================
@@ -437,6 +459,9 @@ Resources:
       SecurityGroups:
         - !Ref MyALBSG
       Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '600' # seconds
 
   MyALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -463,6 +488,31 @@ Resources:
   #==========================================================================================================================================================
   # Cognito
   #==========================================================================================================================================================
+
+  # Cognito User Pool Client
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref ExistingUserPoolId
+      ClientName: !Sub '${AWS::StackName}-UserPoolClient'
+      GenerateSecret: false
+      AllowedOAuthFlows: ['code']
+      AllowedOAuthScopes: ['phone', 'email', 'openid', 'profile']
+      AllowedOAuthFlowsUserPoolClient: true
+      CallbackURLs:
+        - !If
+          - UseCustomDomain
+          - !Sub 'https://${CustomDomainName}'
+          - !Sub 'https://${FrontendDistribution.DomainName}'
+        - 'http://localhost:3000'
+      LogoutURLs:
+        - !If
+          - UseCustomDomain
+          - !Sub 'https://${CustomDomainName}'
+          - !Sub 'https://${FrontendDistribution.DomainName}'
+        - 'http://localhost:3000'
+      SupportedIdentityProviders: ['Google']
+
   # ALBCognitoUserPoolClient: # TODO: Handle after MyALBCertificate (Internal error reported from downstream service during operation 'Actions of type 'authenticate-cognito' are supported only on HTTPS listeners).
   #   Type: AWS::Cognito::UserPoolClient
   #   Properties:
@@ -712,6 +762,10 @@ Resources:
               Value: !Ref TenantId
             - Name: STACK_NAME
               Value: !Ref AWS::StackName
+            - Name: ADMIN_USER_ID
+              Value: !Ref AdminUserId
+            - Name: ENABLE_ENHANCED_LOGGING
+              Value: false
 
   BankingECSService:
     Type: AWS::ECS::Service
@@ -911,12 +965,87 @@ Resources:
           - !Ref MyECSServicesSG
       Role: !GetAtt MyCreateTablesLambdaExecutionRole.Arn
 
+  # ------------------------------------------------------------------------------
+  # S3 web site and cloudfront
+  # ------------------------------------------------------------------------------
+
+  # S3 Bucket for frontend hosting
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-frontend-static
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: ['GET']
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: !If [AllowS3PublicAccessCondition, false, true]
+        BlockPublicPolicy: !If [AllowS3PublicAccessCondition, false, true]
+        IgnorePublicAcls: !If [AllowS3PublicAccessCondition, false, true]
+        RestrictPublicBuckets: !If [AllowS3PublicAccessCondition, false, true]
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: ObjectWriter
+
+  # Bucket Policy to allow public read access
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+
+  #  CloudFront Distribution
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: S3Origin
+            DomainName: !Select [1, !Split ['//', !GetAtt FrontendBucket.WebsiteURL]]
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: allow-all # TODO: redirect-to-https Handle SSL before production!
+          AllowedMethods: ['GET', 'HEAD', 'OPTIONS']
+          CachedMethods: ['GET', 'HEAD']
+          ForwardedValues:
+            QueryString: false
+            Headers: ['Origin']
+          MinTTL: 0
+          DefaultTTL: 86400
+          MaxTTL: 31536000
+        ViewerCertificate: !If
+          - UseCustomDomain
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+          - CloudFrontDefaultCertificate: true
+        PriceClass: PriceClass_100
+        Enabled: true
+        Aliases: !If
+          - UseCustomDomain
+          - [!Ref CustomDomainName]
+          - !Ref AWS::NoValue
+
 Outputs:
   MyVPCId:
     Description: 'The ID of the VPC'
     Value: !Ref MyVPC
     Condition: CreateVpc
-
   MyIgwId:
     Description: 'The ID of the Internet Gateway'
     Value: !Ref MyInternetGateway
@@ -929,3 +1058,23 @@ Outputs:
   RDSInstanceEndpoint:
     Description: 'RDS Instance Endpoint'
     Value: !GetAtt MyRDSDBInstance.Endpoint.Address
+
+  UserPoolId:
+    Description: 'Cognito User Pool ID'
+    Value: !Ref ExistingUserPoolId
+  UserPoolClientId:
+    Description: 'Cognito User Pool Client ID'
+    Value: !Ref UserPoolClient
+  CognitoDomain:
+    Description: 'Cognito User Pool Domain'
+    Value: !Ref ExistingCognitoDomain
+
+  S3BucketName:
+    Description: 'Name of the S3 bucket hosting the frontend'
+    Value: !Ref FrontendBucket
+  CloudFrontUrl:
+    Description: 'CloudFront distribution URL'
+    Value: !Sub 'https://${FrontendDistribution.DomainName}'
+  CloudFrontDistributionId:
+    Description: 'CloudFront distribution ID'
+    Value: !Ref FrontendDistribution

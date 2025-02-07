@@ -3,3 +3,4 @@ backend/layers/pg/nodejs/node_modules/
 scripts/.aws-sam/*
 scripts/common/util/node_modules/
 scripts/common/.aws-sam/*
+frontend/node_modules/*

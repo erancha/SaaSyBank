@@ -2,7 +2,8 @@ const http = require('http');
 const express = require('express');
 const WebSocket = require('ws');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { onWebsocketConnect, CURRENT_TASK_ID } = require('./websocketHandlers');
+const { CURRENT_TASK_ID } = require('./constants');
+const { onWebsocketConnect } = require('./websocketHandlers');
 const { testRedisConnectivity, disposeRedisClient } = require('./redisClient');
 const dbData = require('./dbData');
 
@@ -74,12 +75,13 @@ bankingRouter.post('/account', async (req, res) => {
   }
 
   try {
-    const result = await dbData.createAccount(accountId, initialBalance, tenantId);
+    const userId = '43e4c8a2-4081-70d9-613a-244f8f726307'; // bettyuser100@gmail.com
+    const result = await dbData.createAccount(accountId, initialBalance, userId, tenantId);
     if (result.rowCount === 0) {
       return res.status(409).json({ message: 'Account already exists' });
     }
 
-    queueExecutedTransaction({ path: req.path, body: req.body });
+    enqueueExecutedTransaction({ path: req.path, body: req.body });
 
     res.status(201).json({
       message: 'Account created successfully',
@@ -91,7 +93,7 @@ bankingRouter.post('/account', async (req, res) => {
   }
 });
 
-// List all accounts
+// Get all accounts
 bankingRouter.get('/accounts/:tenantId', async (req, res) => {
   const { tenantId } = req.params;
   if (!tenantId) {
@@ -99,7 +101,7 @@ bankingRouter.get('/accounts/:tenantId', async (req, res) => {
   }
 
   try {
-    const result = await dbData.listAccounts(tenantId);
+    const result = await dbData.getAllAccounts(tenantId);
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'No accounts found for this tenant' });
     }
@@ -122,7 +124,7 @@ bankingRouter.get('/balance/:tenantId/:accountId', async (req, res) => {
   }
 
   try {
-    const result = await dbData.getBalance(tenantId, accountId);
+    const result = await dbData.getAccountBalance(tenantId, accountId);
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Account not found' });
     }
@@ -152,7 +154,7 @@ bankingRouter.post('/deposit', async (req, res) => {
     }
     res.json({ message: 'Deposit successful', account: result.rows[0] });
 
-    queueExecutedTransaction({ path: req.path, body: req.body });
+    enqueueExecutedTransaction({ path: req.path, body: req.body });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error processing deposit' });
@@ -173,7 +175,7 @@ bankingRouter.post('/withdraw', async (req, res) => {
     }
     res.json({ message: 'Withdraw successful', account: result.rows[0] });
 
-    queueExecutedTransaction({ path: req.path, body: req.body });
+    enqueueExecutedTransaction({ path: req.path, body: req.body });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error processing withdrawal' });
@@ -199,7 +201,7 @@ bankingRouter.post('/transfer', async (req, res) => {
       toAccount: transferResult.toAccount,
     });
 
-    queueExecutedTransaction({ path: req.path, body: req.body });
+    enqueueExecutedTransaction({ path: req.path, body: req.body });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error processing transfer' });
@@ -215,7 +217,7 @@ bankingRouter.get('/transactions/:tenantId/:accountId', async (req, res) => {
   }
 
   try {
-    const transactions = await dbData.getAllTransactions(accountId, tenantId);
+    const transactions = await dbData.getAccountTransactions(accountId, tenantId);
     res.json({ transactions });
   } catch (error) {
     console.error(error);
@@ -234,7 +236,7 @@ app.use((req, res) => {
 //=========================================================================================================================
 const sqsClient = new SQSClient({ region: process.env.APP_AWS_REGION });
 
-async function queueExecutedTransaction(messageBody) {
+async function enqueueExecutedTransaction(messageBody) {
   const EXECUTED_TRANSACTIONS_QUEUE_URL = process.env.EXECUTED_TRANSACTIONS_QUEUE_URL;
   try {
     const data = await sqsClient.send(

@@ -51,32 +51,49 @@ exports.handler = async (event) => {
     }
 
     // Create table(s)
-    const createTableQuery = `
-        CREATE TABLE IF NOT EXISTS accounts (
-            id SERIAL,
-            tenant_id TEXT NOT NULL,
-            account_id TEXT NOT NULL,
-            balance DECIMAL(10, 2) NOT NULL,
-            PRIMARY KEY (tenant_id, account_id)
-        );
-        
-        CREATE TABLE IF NOT EXISTS accountTransactions (
-            id SERIAL,
-            tenant_id TEXT NOT NULL,
-            account_id TEXT NOT NULL,
-            transaction BYTEA NOT NULL,
-            PRIMARY KEY (tenant_id, account_id, id)
-        );
+    const createTableQueries = `
+      CREATE TABLE IF NOT EXISTS accounts (
+          id SERIAL,
+          tenant_id TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          is_disabled BOOLEAN NULL,
+          balance DECIMAL(10, 2) NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (tenant_id, account_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS accountTransactions (
+          id SERIAL,
+          tenant_id TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          transaction BYTEA NOT NULL,
+          PRIMARY KEY (tenant_id, account_id, id)
+      );
     `;
 
-    await dbClient.query(createTableQuery);
+    await dbClient.query(createTableQueries);
+
+    // Check if the index exists and create it if it does not
+    const indexCheckQuery = `
+      DO $$
+      BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE tablename = 'accounts' AND indexname = 'idx_user_id') THEN
+              CREATE INDEX idx_user_id ON accounts(user_id);
+          END IF;
+      END $$;
+    `;
+    await dbClient.query(indexCheckQuery);
+
     console.log('Tables created.');
 
-    const TENANT_ID = 'tenant1';
+    const TENANT_ID = 'temp-tenant';
     const ACCOUNT_ID = 'account123';
+    const USER_ID = '43e4c8a2-4081-70d9-613a-244f8f726307'; // bettyuser100@gmail.com
     const newLocal = `
-            INSERT INTO accounts (tenant_id,account_id, balance) 
-            VALUES ('${TENANT_ID}', '${ACCOUNT_ID}', 100.00);
+            INSERT INTO accounts (tenant_id,account_id,user_id,balance) 
+            VALUES ('${TENANT_ID}', '${ACCOUNT_ID}', '${USER_ID}', 100.00);
         `;
     // 1. Add a record
     const addRecordQuery = newLocal;

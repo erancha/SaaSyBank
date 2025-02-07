@@ -1,0 +1,892 @@
+body {
+  display: flex;
+  justify-content: center; /* Center horizontally */
+  align-items: center; /* Center vertically */
+  margin: 0; /* Remove default margin */
+}
+
+.main-container {
+  border: 1px solid lightgray;
+  margin: 5px; /* Adjust margin as needed */
+  padding: 5px;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  width: 95vw; /* Keep your existing width */
+}
+
+.main-container > .header-sticky-container {
+  position: sticky;
+  top: 0; /* This makes it stick to the top */
+  z-index: 1000; /* Ensures it stays above other content */
+  background-color: white;
+  padding-bottom: 0.5rem;
+
+  > .header-container {
+    display: flex;
+    justify-content: space-between;
+    background-color: whitesmoke;
+    padding: 4px;
+    border-radius: 0.5rem;
+  }
+}
+
+.main-container .header-title-container {
+  display: grid;
+  grid-template-columns: minmax(70px, 2fr) 1fr;
+  column-gap: 0.5rem;
+  align-items: end;
+
+  > .build {
+    font-size: 5px;
+    align-self: self-start;
+    grid-column: span 2;
+  }
+
+  > .active-page-name {
+    font-size: 1.2rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    &.admin {
+      cursor: initial;
+    }
+  }
+
+  > .network-container {
+    scale: 0.8;
+    margin: 0;
+  }
+}
+
+.main-container .header-container .header-title {
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.menu-container {
+  display: flex;
+  max-height: 2rem;
+  align-self: center;
+  align-items: center;
+
+  .menu-container-item {
+    display: flex;
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
+    height: 100%; /* Make sure it takes full height of the cell */
+
+    &.action-button {
+      scale: 1;
+    }
+  }
+
+  > .user-balance {
+    font-size: x-small;
+    font-weight: 750;
+    text-align: center;
+    max-width: 2rem;
+    margin-right: 2rem;
+    animation: scaleAnimation 3s ease-in-out;
+
+    &.negative {
+      color: red;
+    }
+  }
+}
+
+@keyframes scaleAnimation {
+  0% {
+    font-weight: 300;
+    transform: scale(1);
+  }
+  33% {
+    transform: scale(2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.menu-trigger {
+  padding: 0.1rem;
+  transition-property: background-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+
+  button {
+    min-width: 1.5rem;
+    padding: 3px;
+    margin-bottom: 1px;
+  }
+}
+
+.menu-trigger:hover {
+  background-color: rgb(243 244 246);
+  border: 1px solid blue;
+  border-radius: 0.5rem;
+}
+
+.menu-trigger .icon {
+  width: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.menu-trigger .icon-line {
+  height: 0.125rem;
+  width: 100%;
+  background-color: black;
+}
+
+.MuiList-root > li {
+  display: flex;
+  flex-direction: column;
+
+  > hr {
+    border: 1px solid #ccc;
+    margin: 5px 0;
+    width: 100%;
+  }
+}
+
+.MuiListItemIcon-root {
+  margin-right: 1rem;
+}
+
+.spinner {
+  border: 8px solid #f3f3f3; /* Light grey */
+  border-top: 8px solid #3498db; /* Blue */
+  border-radius: 50%;
+  position: absolute;
+  top: 20%;
+  left: 45%;
+  width: 35px; /* Size of the spinner */
+  height: 35px; /* Size of the spinner */
+  animation: spin 1s linear infinite; /* Spinning animation */
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.Toastify__toast-container {
+  width: 75vw;
+}
+
+.network-container {
+  display: grid;
+  row-gap: 5px;
+  column-gap: 0.5rem;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 100%;
+  max-height: 3rem;
+  margin-left: 0.5rem;
+}
+
+.network-container .left-column {
+  display: flex;
+  flex-direction: column;
+  place-content: center;
+}
+
+.network-container .right-column {
+  display: flex;
+  flex-direction: column;
+  font-size: x-small;
+  margin: 2px;
+  padding: 2px 2px 2px 1rem;
+  overflow-y: auto;
+  align-self: center;
+}
+
+.network-icon {
+  vertical-align: middle;
+  height: 0.9rem;
+}
+.network-icon.connected {
+  color: green;
+}
+.network-icon.disconnected {
+  color: red;
+  scale: 150%;
+}
+.last-connections-timestamp {
+  font-size: x-small;
+}
+
+.text-link {
+  background: none;
+  border: none;
+  color: #007bff;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 8px;
+  font-size: 1rem;
+  width: 100%;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.text-link:hover {
+  color: #0056b3;
+  background-color: lightblue;
+  border-radius: 0.5rem;
+}
+
+.app-overview-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+
+  > hr {
+    width: 100%;
+  }
+
+  &.menu-is-opened {
+    margin-top: 10rem;
+  }
+
+  .header1 {
+    font-size: 1.5rem !important;
+    margin: 2rem auto 0.5rem auto;
+  }
+
+  .header2 {
+    margin: 0 auto;
+    min-width: 80%;
+
+    p {
+      font-weight: 500;
+      margin: 0.5rem 1rem;
+      text-align: left;
+
+      &,
+      & > span {
+        font-size: 1.3rem;
+      }
+    }
+
+    .secure-authentication {
+      color: darkgreen;
+    }
+
+    .text-link {
+      &.sign-in-from-overview {
+        font-weight: 600;
+        animation: pulsate-brightness 0.75s ease-in-out 12 4s forwards;
+      }
+
+      &.toggle-overview {
+        font-size: 0.9rem;
+        animation: pulsate-brightness 0.8s ease-in-out 5 8s forwards;
+      }
+    }
+
+    ul {
+      text-align: center;
+      margin-top: 1rem;
+      margin-left: 1rem;
+      padding-inline-start: 0;
+
+      li {
+        margin: 0.5rem 0;
+        text-align: left;
+      }
+    }
+
+    &.more {
+      width: 70%;
+      font-size: 1rem;
+      &.hidden {
+        margin-top: 2rem;
+        animation: fade-in-from-30-percent 18s linear 1 forwards;
+      }
+      &.visible {
+        margin-top: 0;
+      }
+    }
+
+    .link-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 1rem;
+      max-width: 70%;
+
+      a {
+        text-decoration: none;
+        color: #0073e6;
+        font-size: 0.8rem;
+        text-decoration: underline;
+
+        &:hover {
+          border-bottom: 3px solid;
+        }
+      }
+    }
+
+    img {
+      max-width: 90%;
+      height: auto;
+    }
+  }
+}
+
+@keyframes fade-in-from-30-percent {
+  0%,
+  33% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.menu-content-inner {
+  padding: 1rem;
+  margin: 0.5rem 1rem;
+  border: 1px solid lightgray;
+}
+
+.menu-content-inner .user-details {
+  font-size: 11px;
+  font-weight: bold;
+  align-content: center;
+  color: darkgreen;
+  margin-bottom: 0.5rem;
+}
+
+.body-container {
+  background-color: #f0f0f0;
+  height: 92%;
+  border-radius: 0.5rem;
+}
+
+.accounts-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 10px;
+  border-radius: 0.5rem;
+}
+.accounts-container.disconnected {
+  pointer-events: none; /* Prevents interaction with content */
+  background-color: #f0f0f0;
+}
+
+.transactions-list-header,
+.transaction-row-container {
+  display: grid;
+  grid-template-columns: 2fr 3fr 3fr 4fr 5fr 5fr minmax(80px, 2fr) 1fr minmax(60px, 1fr);
+  border-radius: 0.5rem;
+}
+.transactions-list-header {
+  background-color: lightgray;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: bold;
+}
+
+.transactions-list-header > div {
+  font-size: 0.8rem;
+  padding: 5px;
+}
+
+.accounts-list,
+.transactions-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.account-row-container.input .id {
+}
+
+.account-row-container.input > div *:not(span) {
+  border: 1px solid #ddd;
+  border-radius: 15px;
+  height: 2rem;
+  padding: 0.2rem 0.4rem;
+}
+.account-row-container.input > div > select,
+.account-row-container.input > div > input {
+  height: 100%;
+}
+
+.input-and-error-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.error-message {
+  color: red;
+  font-size: 10px; /* Adjust size as needed */
+  margin-top: 5px; /* Space between input and error message */
+}
+.account-row-container.input > div *.error {
+  border-color: red; /* Highlight the input with a red border */
+}
+
+.account-row-container.input .action-button {
+  background-color: whitesmoke;
+  color: black;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  justify-self: center;
+  align-self: center;
+  scale: 100%;
+}
+
+.action-button:hover,
+.account-row-container.input .action-button:hover {
+  background-color: blue;
+  color: lightblue;
+}
+
+.accounts-list-header,
+.account-row-container {
+  display: grid;
+  grid-template-columns: 4fr 4fr minmax(80px, 1fr);
+  &.admin {
+    grid-template-columns: 4fr 4fr 1fr minmax(80px, 1fr);
+  }
+}
+
+.accounts-list-header {
+  background-color: lightgray;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: bold;
+
+  > div {
+    font-size: 0.8rem;
+    padding: 5px;
+  }
+
+  > .actions {
+    justify-self: center;
+  }
+
+  .category-container {
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+
+    .current {
+      font-size: 0.6rem;
+      color: gray;
+      text-decoration: underline;
+    }
+  }
+}
+
+.account-row-container {
+  gap: 5px;
+  padding: 5px;
+  color: darkblue;
+  font-weight: 500;
+
+  > .bet-amount-container {
+    > .bet-dropdown > select {
+      width: 100%;
+      height: 100%;
+      border-radius: 0.5rem;
+      border: 2px solid darkblue;
+    }
+
+    &.bet-selected {
+      border: 2px solid darkgray;
+
+      > .bet-dropdown > select {
+        border-width: 0;
+        margin-bottom: 0.5rem;
+      }
+      > .input-and-error-container {
+        > input {
+          border: 1px solid darkblue;
+          border-radius: 0.5rem;
+          padding: 3px;
+        }
+      }
+    }
+  }
+}
+
+.account-row-container > div {
+  padding: 5px;
+  border-radius: 10px;
+  transition: background-color 0.2s ease;
+}
+.account-row-container > div,
+.account-row-container > div > p,
+.account-row-container .action-button:not(:hover) {
+  background-color: white;
+  font-size: 0.8rem;
+}
+
+.account-row-container > div > p {
+  margin: 2px;
+}
+
+.account-row-container.unviewed,
+.account-row-container.unviewed {
+  color: darkgreen;
+  > div,
+  > div > p,
+  > div > select,
+  > div > button,
+  > div > * > svg {
+    background-color: lightgreen;
+    font-weight: 400;
+  }
+}
+.account-row-container.viewed {
+  opacity: 0.7;
+}
+
+.account-row-container.closed,
+.account-row-container > .bet-dropdown.closed > select,
+.transaction-row-container.closed {
+  pointer-events: none; /* Prevents any mouse interaction */
+  opacity: 0.3; /* Makes it look disabled */
+
+  &.won {
+    background-color: lightgreen;
+  }
+  &.lost {
+    background-color: lightsalmon;
+  }
+}
+.account-row-container.closed > *,
+.transaction-row-container.closed > * {
+  opacity: 0.8; /* Makes it look disabled */
+}
+
+.account-row-container {
+  .bet-dropdown.flashing,
+  .bet-amount.flashing,
+  .actions.flashing {
+    animation: pulsate-brightness 0.7s ease-in-out 3;
+  }
+}
+
+.account-row-container .actions {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: center;
+
+  & .action-button.highlight {
+    scale: 120%;
+  }
+}
+@keyframes pulsate-brightness {
+  0%,
+  30%,
+  70%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+.account-row-container.admin .actions {
+  pointer-events: all;
+}
+
+.action-button {
+  border: unset;
+  cursor: pointer;
+  scale: 70%;
+
+  &.bet-selected {
+    color: blue;
+
+    &:hover {
+      background-color: blue;
+      color: white;
+    }
+  }
+}
+
+.menu-icon-text {
+  display: flex;
+}
+
+.menu-icon-text.selected span {
+  color: gray;
+}
+
+.transactions-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 10px;
+  border-radius: 0.5rem;
+}
+
+.transactions-list-header {
+  background-color: lightgray;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: bold;
+}
+
+.transactions-list-header > div {
+  font-size: 0.8rem;
+  padding: 5px;
+}
+
+.transactions-list {
+  gap: 10px;
+  margin-top: 5px;
+
+  > .no-transactions {
+    font-size: 1rem;
+    text-align: center;
+    padding: 0.5rem;
+    color: gray;
+    font-style: italic;
+
+    > .accounts {
+      text-decoration: underline;
+      cursor: pointer;
+    }
+  }
+}
+
+.transaction-row-container {
+  gap: 5px;
+  padding: 5px;
+  color: darkblue;
+  font-weight: 500;
+
+  border: 2px solid white;
+  border-radius: 0.5rem;
+
+  &.closed {
+    border-color: red;
+
+    &.won {
+      border-color: green;
+    }
+  }
+}
+
+.transaction-row-container > div {
+  padding: 5px;
+  border-radius: 10px;
+  background-color: white;
+  font-size: 0.8rem;
+  transition: background-color 0.2s ease;
+
+  &.dueDate > .flashing {
+    font-size: 10px;
+    color: darkred;
+    animation: pulsate-brightness 2s ease-in-out infinite;
+    &.fast {
+      animation-duration: 1.2s;
+    }
+    &.faster {
+      animation-duration: 0.6s;
+    }
+    &.fastest {
+      animation-duration: 0.3s;
+      background-color: yellow;
+    }
+  }
+}
+
+.transaction-row-container > div > p {
+  margin: 2px;
+  background-color: white;
+  font-size: 0.8rem;
+}
+
+.transaction-row-container .title p,
+.transaction-row-container .description p {
+  word-wrap: break-word;
+}
+
+.transaction-row-container .status {
+  font-weight: bold;
+}
+
+.transaction-row-container.closed .status {
+  color: red;
+}
+.transaction-row-container.closed.won .amount,
+.transaction-row-container.closed.won .odds,
+.transaction-row-container.closed.won .status {
+  color: darkgreen;
+  font-weight: 500;
+}
+
+.transaction-row-container.open .status {
+  color: green;
+}
+
+.chart-container {
+  .recharts-wrapper {
+    margin-top: 1rem;
+
+    .recharts-legend-wrapper {
+      bottom: 0 !important;
+
+      span {
+        color: black !important;
+        font-weight: bold;
+      }
+    }
+  }
+
+  .action-button {
+    background-color: transparent;
+    margin: 1rem 0 0 0.5rem;
+    scale: 120%;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .app-overview-container .header2 {
+    min-width: 95%;
+    padding: 0;
+
+    p {
+      margin: 0.5rem 0;
+      padding: 0;
+
+      &,
+      & > span {
+        font-size: 1.1rem;
+      }
+    }
+  }
+
+  .account-row-container.input {
+    grid-template-columns: 5fr 1fr 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .account-row-container {
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid lightgray;
+    border-radius: 0.5rem;
+  }
+
+  .transaction-row-container,
+  .transactions-list-header {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .account-row-container > div,
+  .transaction-row-container > div {
+    position: relative;
+    padding-top: 20px;
+  }
+
+  .account-row-container > div::before,
+  .transaction-row-container > div::before {
+    content: attr(class);
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    font-size: 0.7rem;
+    color: gray;
+    text-transform: capitalize;
+  }
+
+  .account-row-container.input > div::before,
+  .account-row-container > div.bet-amount-container::before,
+  .account-row-container > div.actions::before,
+  .transaction-row-container > div.bet-amount-container::before,
+  .transaction-row-container > div.actions::before {
+    content: normal; /* Resetting the content for these classes */
+  }
+
+  .account-row-container > .bet-amount-container,
+  .account-row-container > .actions {
+    padding: 0.5rem;
+  }
+
+  .accounts-list-header,
+  .transactions-list-header {
+    display: none;
+  }
+
+  .accounts-list,
+  .transactions-list {
+    gap: 10px;
+  }
+
+  .account-row-container > .actions {
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-overview-container .header2 {
+    padding-left: 1rem;
+  }
+
+  .header-container {
+    gap: 0.5rem;
+  }
+
+  .network-container {
+    column-gap: 2px;
+  }
+  .network-container .right-column {
+    font-size: xx-small;
+  }
+
+  .accounts-container {
+    padding: 5px;
+  }
+}
+
+@media (max-width: 600px) {
+  .menu-container {
+    flex-direction: column;
+    .action-button {
+      scale: 0.8;
+    }
+
+    > .user-balance {
+      margin-right: 0.5rem;
+    }
+  }
+
+  .account-row-container,
+  .account-row-container.admin,
+  .transaction-row-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .account-row-container {
+    > .actions {
+      grid-area: 3/2/3/2;
+    }
+    &.admin > .actions {
+      grid-area: 4/2/4/2;
+    }
+  }
+
+  .account-row-container > .bet-dropdown > select {
+    height: 2rem;
+  }
+}

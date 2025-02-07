@@ -1,3 +1,41 @@
+# Preface
+
+**SaaSyBank** serves as a demonstration for a banking application that enables users to create accounts and engage in various banking transactions.
+
+The application includes two distinct user roles: Bankers, who can activate or deactivate accounts, and Users, who have the ability to deposit, withdraw, and transfer money between accounts.
+
+Built with scalability in mind, the app leverages serverless computing and storage, complemented by global content distribution through CloudFront.
+
+It features a user-friendly design with a mobile-first approach and robust monitoring capabilities via AWS CloudWatch. The app is developed using AWS services, React, and WebSockets to facilitate real-time updates.
+
+User authentication is securely managed through Google.
+
+# Table Of Content
+
+<!-- toc -->
+
+- [High-Level Design (HLD) Document for SaaSyBank](#high-level-design-hld-document-for-saasybank)
+  - [Overview](#overview)
+  - [Architecture Diagram](#architecture-diagram)
+  - [Components](#components)
+    - [1. **Frontend**](#1-frontend)
+    - [2. **Backend Architecture on AWS**](#2-backend-architecture-on-aws)
+      - [2.1 **Application Load Balancer (ALB)**](#21-application-load-balancer-alb)
+      - [2.2 **ECS with Fargate**](#22-ecs-with-fargate)
+      - [2.3 **RDS with PostgreSQL**](#23-rds-with-postgresql)
+      - [2.4 **SQS**](#24-sqs)
+    - [3. **Deployment Flexibility**](#3-deployment-flexibility)
+    - [4. **Future Enhancements**](#4-future-enhancements)
+      - [4.1 **Cognito**](#41-cognito)
+      - [4.2 **CloudFront**](#42-cloudfront)
+      - [4.3 **ElastiCache (Redis)**](#43-elasticache-redis)
+  - [Security Considerations](#security-considerations)
+  - [Performance Metrics](#performance-metrics)
+  - [Monitoring and Logging](#monitoring-and-logging)
+  - [Summary](#summary)
+
+<!-- tocstop -->
+
 # High-Level Design (HLD) Document for SaaSyBank
 
 ## Overview

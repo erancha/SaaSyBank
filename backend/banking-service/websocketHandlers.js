@@ -1,33 +1,28 @@
 const url = require('url');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const dbData = require('./dbData');
+const { CURRENT_TASK_ID } = require('./constants');
+const { handleCommand, handleRead, writeResponse } = require('./commandsHandlers');
 const { getRedisClient, getPublisherClient, getSubscriberClient } = require('./redisClient');
 
-const CURRENT_TASK_ID = uuidv4();
-console.log(`Started task: ${CURRENT_TASK_ID}`);
-
 // Refer to ./websockets-ecs.png
+// -----------------------------
 const CONNECTED_CLIENTS_TASKS_MAP = `${process.env.STACK_NAME}:clientsTasksMap()`;
-// const CONNECTED_CLIENTS_USERNAMES_MAP = `${process.env.STACK_NAME}:clientsUsernamesMap()`;
+const CONNECTED_CLIENTS_USERNAMES_MAP = `${process.env.STACK_NAME}:clientsUsernamesMap()`;
 
-// Initialize Redis pub/sub clients
-const publisher = getPublisherClient();
-const subscriber = getSubscriberClient();
-
-// WebSocket clients connected to this task instance
+// WebSocket clients connected to this task instance: userId --> socket
 const connectedClients = new Map();
 
-// Subscribe to this task's channel
+// Initialize Redis pub/sub clients, and Subscribe to this task's channel:
+const publisher = getPublisherClient();
+const subscriber = getSubscriberClient();
 subscriber.subscribe(`task:${CURRENT_TASK_ID}`);
-
-// Handle incoming messages from Redis pub/sub
 subscriber.on('message', onRedisPubSubMessage);
 
 /*
-  on new connection from a client:
+  on new connection from a websocket client:
  */
-const onWebsocketConnect = (socket, request) => {
+const onWebsocketConnect = async (socket, request) => {
   const queryParams = url.parse(request.url, true).query;
 
   const decodedJwt = jwt.decode(queryParams.token);
@@ -35,29 +30,31 @@ const onWebsocketConnect = (socket, request) => {
 
   const currentUserId = decodedJwt.sub ?? decodedJwt.identities.userId;
   const currentUserName = decodedJwt.name;
-  console.log(`Task ${CURRENT_TASK_ID}: New client connection: ${JSON.stringify({ currentUserId, currentUserName }, null, 2)}`);
 
   socket.userId = currentUserId;
   connectedClients.set(currentUserId, socket);
 
   const redisClient = getRedisClient();
-  redisClient.hset(CONNECTED_CLIENTS_TASKS_MAP, currentUserId, CURRENT_TASK_ID);
-  // redisClient.hset(CONNECTED_CLIENTS_USERNAMES_MAP, currentUserId, currentUserName);
+  await redisClient.hset(CONNECTED_CLIENTS_TASKS_MAP, currentUserId, CURRENT_TASK_ID);
+  await redisClient.hset(CONNECTED_CLIENTS_USERNAMES_MAP, currentUserId, currentUserName);
 
-  // Handle sending initial data after connection
-  dbData
-    .listAccounts(process.env.TENANT_ID)
-    .then((result) => {
-      socket.send(JSON.stringify({ accounts: result.rows || [] }));
-    })
-    .catch((error) => {
-      console.error(`Task ${CURRENT_TASK_ID}: Error fetching accounts:`, error);
-      socket.send(JSON.stringify({ error: 'Failed to fetch accounts' }));
-    });
+  console.log(`Task ${CURRENT_TASK_ID}: User ${socket.userId} connected and inserted to ${CONNECTED_CLIENTS_TASKS_MAP}.`);
+  console.log(`Task ${CURRENT_TASK_ID}: User ${socket.userId} connected and inserted to ${CONNECTED_CLIENTS_USERNAMES_MAP}.`);
+
+  try {
+    const isAdmin = currentUserId === process.env.ADMIN_USER_ID;
+    const response = {
+      ...(await handleRead({ commandParams: { accounts: { all: isAdmin } }, connectedUserId: currentUserId })),
+      ...(isAdmin ? { isAdmin } : {}),
+    };
+    writeResponse({ response, responseSocket: socket });
+  } catch (error) {
+    socket.send(JSON.stringify({ message: 'Failed to fetch accounts:', error }));
+  }
 
   // Websocket event handlers
-  socket.on('message', (message) => onWebsocketMessage(message, socket, redisClient));
-  socket.on('close', () => onWebsocketDisconnect(socket, redisClient));
+  socket.on('message', (message) => onWebsocketMessage(message, socket));
+  socket.on('close', () => onWebsocketDisconnect(socket));
 };
 
 /*
@@ -74,86 +71,91 @@ const validateJWT = (decodedJwt) => {
 };
 
 /*
-  on message from a connected client:
+  on message from a connected websocket client:
  */
-const onWebsocketMessage = (message, socket, redisClient) => {
-  // redisClient
-  //   .hget(CONNECTED_CLIENTS_USERNAMES_MAP, socket.userId)
-  //   .then((username) => {
-  //     console.log(`Task ${CURRENT_TASK_ID}: ${username}`);
-  //   })
-  //   .catch((error) => console.error(`Task ${CURRENT_TASK_ID}: Error getting client ID from ${CONNECTED_CLIENTS_USERNAMES_MAP}:`, error));
+const onWebsocketMessage = async (message, socket) => {
+  try {
+    const redisClient = getRedisClient();
+    const username = await redisClient.hget(CONNECTED_CLIENTS_USERNAMES_MAP, socket.userId);
+    console.log(`Task ${CURRENT_TASK_ID}: Received ${message}, from user ${socket.userId}: ${username}`);
 
-  const parsedMessage = JSON.parse(message);
-  const messageContent = parsedMessage.data.messageContent;
-  console.log(`Task ${CURRENT_TASK_ID}: Received from user: ${socket.userId}, message: ${messageContent}`);
-  const parsedMessageContent = JSON.parse(messageContent); // TODO (test): {"toUserId": "43e4c8a2-4081-70d9-613a-244f8f726307", "text": "Hello Tester Betty!"} , using Chatty's frontend: "WEBSOCKET_API_URL": "http://sbf-ALB-986549444.eu-central-1.elb.amazonaws.com/api/banking/ws"
-  const toUserId = parsedMessageContent.toUserId;
+    const { type: commandType, params: commandParams, to: commandTargetUserId } = JSON.parse(message).command;
 
-  redisClient
-    .hget(CONNECTED_CLIENTS_TASKS_MAP, toUserId)
-    .then((toTaskId /* the task id that accepted the initial websocket connection from toUserId */) => {
-      if (toTaskId) {
-        // If the message is for the current task, deliver directly
-        if (toTaskId === CURRENT_TASK_ID) {
-          const toUserSocket = connectedClients.get(toUserId);
-          if (toUserSocket) {
-            console.log(`Task ${CURRENT_TASK_ID}: Delivering message: ${parsedMessageContent.text}, to user: ${toUserId}, directly ...`);
-            toUserSocket.send(JSON.stringify({ content: parsedMessageContent.text }));
-          } else console.error(`Task ${CURRENT_TASK_ID}: No target socket found for user: ${toUserId}`);
-        } else {
-          // If message is for different task, publish to Redis
-          console.log(`Task ${CURRENT_TASK_ID}: Delivering message: ${parsedMessageContent.text}, to user: ${toUserId}, thru task:${toTaskId} ...`);
-          publisher
-            .publish(
-              `task:${toTaskId}`,
-              JSON.stringify({
-                toUserId,
-                text: parsedMessageContent.text,
-              })
-            )
-            .catch((error) => console.error(`Task ${CURRENT_TASK_ID}: Error publishing message:`, error));
+    // the client didn't target another user to receive the response, or targeted itself:
+    //-----------------------------------------------------------------------------------
+    if (!commandTargetUserId || commandTargetUserId === 'self') {
+      console.log(`Task ${CURRENT_TASK_ID}: Handling ${message} locally ...`);
+      const commandClientSocket = commandTargetUserId /*self*/ ? socket : undefined;
+      await handleCommand({ commandType, commandParams, connectedUserId: socket.userId, commandClientSocket });
+    } else {
+      // the client targeted another user to receive the response:
+      //----------------------------------------------------------
+      // Identify the ECS task that should handle the command, based on commandTargetUserId:
+      const commandClientSocket = connectedClients.get(commandTargetUserId);
+      if (commandClientSocket) {
+        // the target user is connected to the current task instance
+        console.log(`Task ${CURRENT_TASK_ID}: Handling ${message} locally ...`);
+        await handleCommand({ commandType, commandParams, connectedUserId: commandTargetUserId, commandClientSocket });
+      } else {
+        const targetTaskId = await redisClient.hget(CONNECTED_CLIENTS_TASKS_MAP, commandTargetUserId);
+        if (!targetTaskId) console.error(`Task ${CURRENT_TASK_ID}: Target task not found in ${CONNECTED_CLIENTS_TASKS_MAP} for user ${commandTargetUserId}`);
+        else {
+          // Since the command is for another task, publish to Redis:
+          console.log(`Task ${CURRENT_TASK_ID}: Delivering ${message}, thru channel 'task:${targetTaskId}' ...`);
+          try {
+            await publisher.publish(`task:${targetTaskId}`, message);
+          } catch (error) {
+            console.error(`Task ${CURRENT_TASK_ID}: Error publishing message:`, error);
+          }
         }
-      } else console.error(`Task ${CURRENT_TASK_ID}: Error finding target task for user: ${socket.userId} in ${CONNECTED_CLIENTS_TASKS_MAP}`);
-    })
-    .catch((error) => console.error(`Task ${CURRENT_TASK_ID}: Error getting task for user: ${socket.userId} in ${CONNECTED_CLIENTS_TASKS_MAP}`, error));
-};
-
-/*
-  on disconnect from a client:
- */
-const onWebsocketDisconnect = (socket, redisClient) => {
-  redisClient.hdel(CONNECTED_CLIENTS_TASKS_MAP, socket.userId, (err, res) => {
-    if (err) console.error(`Task ${CURRENT_TASK_ID}: Error deleting user ${socket.userId} from ${CONNECTED_CLIENTS_TASKS_MAP}:`, err);
-    else console.log(`Task ${CURRENT_TASK_ID}: User ${socket.userId} disconnected and removed from ${CONNECTED_CLIENTS_TASKS_MAP}.`);
-  });
-  // redisClient.hdel(CONNECTED_CLIENTS_USERNAMES_MAP_MAP, socket.userId, (err, res) => {
-  //   if (err) console.error(`Task ${CURRENT_TASK_ID}: Error deleting client ID from ${CONNECTED_CLIENTS_USERNAMES_MAP_MAP}:`, err);
-  //   else console.log(`Task ${CURRENT_TASK_ID}: Client ${socket.userId} disconnected and removed from ${CONNECTED_CLIENTS_USERNAMES_MAP_MAP}.`);
-  // });
-  connectedClients.delete(socket.userId);
+      }
+    }
+  } catch (error) {
+    console.error(`Task ${CURRENT_TASK_ID}: Error handling websocket message:`, error);
+  }
 };
 
 // Handle incoming messages from Redis pub/sub
 async function onRedisPubSubMessage(channel, message) {
   try {
-    console.log(`Task ${CURRENT_TASK_ID}: Received message: ${message}, from channel: ${channel}`);
-    const { toUserId, text } = JSON.parse(message);
-    const clientSocket = connectedClients.get(toUserId);
-    if (clientSocket) {
-      console.log(`Task ${CURRENT_TASK_ID}: Delivering message: ${text}, to user: ${toUserId}`);
-      clientSocket.send(JSON.stringify({ content: text }));
-    } else console.error(`Task ${CURRENT_TASK_ID}: No target socket found for user: ${toUserId}`);
+    console.log(`Task ${CURRENT_TASK_ID}: Received ${message}, from channel '${channel}'`);
+    const { type: commandType, params: commandParams, to: commandTargetUserId } = JSON.parse(message).command;
+
+    const commandClientSocket = connectedClients.get(commandTargetUserId);
+    if (!commandClientSocket) console.error(`Task ${CURRENT_TASK_ID}: Socket not found for user ${commandTargetUserId}`);
+    else {
+      console.log(`Task ${CURRENT_TASK_ID}: Handling ${message} locally ...`);
+      await handleCommand({ commandType, commandParams, commandClientSocket });
+    }
   } catch (error) {
     console.error(`Task ${CURRENT_TASK_ID}: Error processing pub/sub message:`, error);
   }
 }
 
+/*
+  on disconnect from a websocket client:
+ */
+const onWebsocketDisconnect = async (socket) => {
+  try {
+    const redisClient = getRedisClient();
+
+    await redisClient.hdel(CONNECTED_CLIENTS_TASKS_MAP, socket.userId);
+    console.log(`Task ${CURRENT_TASK_ID}: User ${socket.userId} disconnected and removed from ${CONNECTED_CLIENTS_TASKS_MAP}.`);
+
+    await redisClient.hdel(CONNECTED_CLIENTS_USERNAMES_MAP, socket.userId);
+    console.log(`Task ${CURRENT_TASK_ID}: User ${socket.userId} disconnected and removed from ${CONNECTED_CLIENTS_USERNAMES_MAP}.`);
+
+    connectedClients.delete(socket.userId);
+  } catch (error) {
+    console.error(`Task ${CURRENT_TASK_ID}: Error during disconnect:`, error);
+  }
+};
+
 // Cleanup on process exit
-process.on('SIGTERM', () => {
-  subscriber.unsubscribe();
-  subscriber.quit();
-  publisher.quit();
+process.on('SIGTERM', async () => {
+  await subscriber.unsubscribe();
+  await subscriber.quit();
+  await publisher.quit();
 });
 
 module.exports = { onWebsocketConnect, CURRENT_TASK_ID };

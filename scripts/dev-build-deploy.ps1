@@ -58,13 +58,13 @@ try {
             $parameterOverrides = @(
                 "ExistingVpcId='vpc-08016eb77e7ac9962'", # en-VPC
                 "ExistingIgwId='igw-0fd7e050083dec0b9'", # sb-IGW
-                # "ExistingUserPoolId='eu-central-1_OHq1aZYju'",
-                # "ExistingIdentityPoolId='eu-central-1:e9f848f2-a3ed-43f9-8ddb-833ca34233ba'",
-                # "ExistingCognitoDomain='ena-575491442067.auth.eu-central-1.amazoncognito.com'",
+                "ExistingUserPoolId='eu-central-1_OHq1aZYju'",
+                "ExistingCognitoDomain='ena-575491442067.auth.eu-central-1.amazoncognito.com'",
                 # "ExistingNotesEncryptionKeyId='d0efc261-b71d-4f5c-9686-9876cc664243'",
                 "ExistingElasticacheRedisClusterAddress='en-elasticache-redis-cluster.hz2zez.0001.euc1.cache.amazonaws.com:6379'",
                 "BankingServiceName='$bankingServiceName'",
-                "BankingTaskEcrImageUri='$($bankingDockerResults.ecrImageUri)'"
+                "BankingTaskEcrImageUri='$($bankingDockerResults.ecrImageUri)'",
+                "AllowS3PublicAccess=true"
             )
 
             if ($commonConstants.isMainBranch) {
