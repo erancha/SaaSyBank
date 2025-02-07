@@ -64,12 +64,7 @@ User authentication is securely managed through Google.
 
 ## Components
 
-### 1. **Frontend**
-
-- **Status**: Not available in Phase 1
-- **Deliverable**: Postman collection
-
-### 2. **Backend Architecture on AWS**
+### 1. **Backend**
 
 #### 2.1 **Application Load Balancer (ALB)**
 
@@ -91,51 +86,37 @@ User authentication is securely managed through Google.
 
 - **Purpose**: To separate the processes of transaction encryption and saving from the core online banking functionalities managed by ECS. The ECS Fargate task is designed to handle only the immediate updating of transaction details in RDS, such as tenant ID, account ID, amount, and target account ID (for transfers). This allows for a quicker response time, as the ECS task can return the result of the transaction immediately without being burdened by the additional overhead of encryption and saving, which will be processed asynchronously through SQS.
 
-### 3. **Deployment Flexibility**
+### 2. **Frontend**
+
+- Single Page Application (SPA) developed with React
+- Hosted on AWS S3
+- Delivered globally via **AWS CloudFront**
+- Technology stack: **React**, **Redux** (HOC), **TypeScript**
+
+### 3. Security Considerations
+
+- Data in transit is encrypted with **HTTPS**
+- User authentication via AWS Cognito with **Google** integration
+- ECS Fargate and Elasticache Redis are in a **private subnet**
+- IAM roles follow the least privilege principle
+
+### 4. Scalability, Performance and Resiliency
+
+- Serverless architecture enables automatic scaling
+- Elasticache Redis enhances the scalability of read operations
+- CloudFront provides low-latency content delivery
+
+### 5. Flexible **Deployment**
 
 - **Modes**: Single-tenant (isolated environments) and multi-tenant (shared environments with data segregation)
-- **CloudFormation Parameter**: To specify deployment type
+- CloudFormation Parameter: To specify deployment type
 
-### 4. **Future Enhancements**
-
-#### 4.1 **Cognito**
-
-- **Purpose**: User authentication and management
-
-#### 4.2 **CloudFront**
-
-- **Purpose**: CDN for improved performance
-
-#### 4.3 **ElastiCache (Redis)**
-
-- **Purpose**: In-memory caching to enhance response times
-- **Usage**: Cache frequently accessed data
-
----
-
-## Security Considerations
-
-- **Network**: Use private subnets for ECS and RDS
-- **Data**: Enable encryption at rest and in transit
-- **Authentication**: Cognito for user management
-- **Access Control**: Role-based policies for AWS resources
-
----
-
-## Performance Metrics
+### 6. Monitoring & Logging
 
 - **Response Time**: API calls < 5 seconds
-- **Scalability**: Architecture auto-scales for growing user base
-
----
-
-## Monitoring and Logging
-
-- **CloudWatch**: Monitor performance and log activities
+- **Monitoring** and **logging** via AWS CloudWatch
 - **Health Checks**: Configure ALB health checks
-
----
 
 ## Summary
 
-SaaSyBank's architecture utilizes AWS services for a scalable, secure, and highly available backend. It supports both single-tenant and multi-tenant deployments, focusing on a robust backend in the initial phase, with plans for future enhancements to improve responsiveness and performance.
+SaaSyBank's architecture utilizes AWS services for a scalable, secure, and highly available backend. It supports both single-tenant and multi-tenant deployments, focusing on a robust backend.
