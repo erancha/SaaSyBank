@@ -286,6 +286,10 @@ Resources:
           FromPort: 5432
           ToPort: 5432
           SourceSecurityGroupId: !Ref MyECSServicesSG
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref MyRDSBasedFunctionSG
         # - IpProtocol: tcp
         #   FromPort: 5432
         #   ToPort: 5432
@@ -793,78 +797,6 @@ Resources:
           ContainerPort: !Ref ECSContainerPort
           TargetGroupArn: !Ref BankingALBTG
 
-  BankingExecutedTransactionsQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: !Sub '${AWS::StackName}-executedTransactionsQueue.fifo'
-      FifoQueue: true
-      ContentBasedDeduplication: true
-
-  TransactionsLoggerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      Handler: transactionsLogger.handler
-      Runtime: nodejs20.x
-      CodeUri: ../backend/transactions-logger/
-      Layers:
-        - !Ref pgLayer
-        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:NotesEncryptionLayer:240' # TODO: Adjust the security group
-        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:IoredisLayer:37' # TODO: Adjust the security group
-      Environment:
-        Variables:
-          RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
-          DB_NAME: !Ref BankingDatabaseName
-          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
-          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
-      Role: !GetAtt TransactionsLoggerFunctionExecutionRole.Arn
-      Events: # event source mapping
-        SQSTrigger:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt BankingExecutedTransactionsQueue.Arn
-            BatchSize: 10
-            Enabled: true
-      VpcConfig:
-        SubnetIds:
-          - !Ref MyRDSPrivateSubnet1
-          - !Ref MyRDSPrivateSubnet2
-        SecurityGroupIds:
-          - !Ref MyECSServicesSG
-
-  TransactionsLoggerFunctionExecutionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
-      Policies:
-        - PolicyName: SQSReceiveMessagePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - sqs:ReceiveMessage
-                  - sqs:DeleteMessage
-                  - sqs:GetQueueAttributes
-                Resource:
-                  - !GetAtt BankingExecutedTransactionsQueue.Arn
-        - PolicyName: RDSAccessPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - rds:DescribeDBInstances
-                  - rds:Connect
-                Resource: '*'
-
   #==========================================================================================================================================================
   # TODO: Alternate EKS (Kubernetes) with Fargate deployment: https://docs.aws.amazon.com/eks/latest/userguide/fargate.html.
   #==========================================================================================================================================================
@@ -962,8 +894,99 @@ Resources:
           - !Ref MyRDSPrivateSubnet1
           - !Ref MyRDSPrivateSubnet2
         SecurityGroupIds:
-          - !Ref MyECSServicesSG
+          - !Ref MyRDSBasedFunctionSG
       Role: !GetAtt MyCreateTablesLambdaExecutionRole.Arn
+
+  BankingExecutedTransactionsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-executedTransactionsQueue.fifo'
+      FifoQueue: true
+      ContentBasedDeduplication: true
+
+  TransactionsLoggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: transactionsLogger.handler
+      Runtime: nodejs20.x
+      CodeUri: ../backend/transactions-logger/
+      Layers:
+        - !Ref pgLayer
+        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:NotesEncryptionLayer:240' # TODO: Adjust the security group
+        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:IoredisLayer:37' # TODO: Adjust the security group
+      Environment:
+        Variables:
+          RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
+          DB_NAME: !Ref BankingDatabaseName
+          DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
+          DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
+      Role: !GetAtt TransactionsLoggerFunctionExecutionRole.Arn
+      Events: # event source mapping
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt BankingExecutedTransactionsQueue.Arn
+            BatchSize: 10
+            Enabled: true
+      VpcConfig:
+        SubnetIds:
+          - !Ref MyRDSPrivateSubnet1
+          - !Ref MyRDSPrivateSubnet2
+        SecurityGroupIds:
+          - !Ref MyRDSBasedFunctionSG
+
+  TransactionsLoggerFunctionExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: SQSReceiveMessagePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource:
+                  - !GetAtt BankingExecutedTransactionsQueue.Arn
+        - PolicyName: RDSAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:Connect
+                Resource: '*'
+
+  MyRDSBasedFunctionSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS Based Function
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      # SecurityGroupIngress:
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          DestinationSecurityGroupId: !Ref MyRDSSG
+      #   - IpProtocol: tcp
+      #     FromPort: 6379 # redis
+      #     ToPort: 6379
+      #     CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-RDSBasedFunction-SG'
 
   # ------------------------------------------------------------------------------
   # S3 web site and cloudfront
@@ -1054,6 +1077,10 @@ Outputs:
   LoadBalancerURL:
     Description: 'LoadBalancer URL'
     Value: !Sub 'http://${MyALB.DNSName}'
+
+  MyECSServicesSG:
+    Description: 'ECS Service security group'
+    Value: !Ref MyECSServicesSG
 
   RDSInstanceEndpoint:
     Description: 'RDS Instance Endpoint'

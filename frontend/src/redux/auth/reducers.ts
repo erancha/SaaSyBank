@@ -1,13 +1,6 @@
 import { AuthState } from '../store/types';
 import initialState from '../store/initialState';
-import {
-  SET_AUTH_LOGIN_SUCCESS,
-  ISetAuthLoginSuccessAction,
-  SET_IS_ADMIN,
-  ISetIsAdminAction,
-  SET_AUTH_LOGOUT,
-  ISetAuthLogoutAction,
-} from './actions';
+import { SET_AUTH_LOGIN_SUCCESS, ISetAuthLoginSuccessAction, SET_IS_ADMIN, ISetIsAdminAction, SET_AUTH_LOGOUT, ISetAuthLogoutAction } from './actions';
 
 type HandledActions = ISetAuthLoginSuccessAction | ISetIsAdminAction | ISetAuthLogoutAction;
 
@@ -19,7 +12,7 @@ export const authReducers = (state: AuthState = initialState.auth, action: Handl
         isAuthenticated: true,
         JWT: action.payload.JWT,
         userId: action.payload.userId,
-        userName: action.payload.userName,
+        username: action.payload.username,
       };
 
     case SET_IS_ADMIN:
@@ -31,7 +24,7 @@ export const authReducers = (state: AuthState = initialState.auth, action: Handl
         isAuthenticated: false,
         JWT: null,
         userId: null,
-        userName: null,
+        username: null,
       };
 
     default:

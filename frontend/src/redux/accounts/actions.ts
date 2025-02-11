@@ -1,4 +1,4 @@
-import { IAccount, IAccountState, IBroadcastPayload } from '../store/types';
+import { IAccount, IAccountState, IUploadPayload } from '../store/types';
 
 // Set accounts data.
 export const SET_ACCOUNTS = 'SET_ACCOUNTS';
@@ -11,18 +11,18 @@ export const setAccountsAction = (accounts: IAccount[]): ISetAccountsAction => (
   payload: accounts,
 });
 
-// Open or close the new account form
-export const TOGGLE_NEW_ACCOUNT_FORM = 'TOGGLE_NEW_ACCOUNT_FORM';
-export interface IToggleNewAccountFormAction {
-  type: typeof TOGGLE_NEW_ACCOUNT_FORM;
-  payload: boolean;
+// Set current account
+export const SET_CURRENT_ACCOUNT = 'SET_CURRENT_ACCOUNT';
+export interface ISetCurrentAccountAction {
+  type: typeof SET_CURRENT_ACCOUNT;
+  payload: string;
 }
-export const toggleNewAccountFormAction = (show: boolean): IToggleNewAccountFormAction => ({
-  type: TOGGLE_NEW_ACCOUNT_FORM,
-  payload: show,
+export const setCurrentAccountAction = (accountId: string): ISetCurrentAccountAction => ({
+  type: SET_CURRENT_ACCOUNT,
+  payload: accountId,
 });
 
-// Add a account.
+// Add an account.
 export const ADD_ACCOUNT = 'ADD_ACCOUNT';
 export interface IAddAccountAction {
   type: typeof ADD_ACCOUNT;
@@ -33,48 +33,37 @@ export const addAccountAction = (account: IAccount): IAddAccountAction => ({
   payload: account,
 });
 
-// Mark a account as viewed.
-export const SET_ACCOUNT_VIEWED = 'SET_ACCOUNT_VIEWED';
-export interface ISetAccountViewedAction {
-  type: typeof SET_ACCOUNT_VIEWED;
-  payload: string; // account id
-}
-export const setAccountViewedAction = (accountId: string): ISetAccountViewedAction => ({
-  type: SET_ACCOUNT_VIEWED,
-  payload: accountId,
-});
-
-// Broadcast a new record to other connected user(s).
-export const BROADCAST_CREATED_RECORD = 'BROADCAST_CREATED_RECORD';
-export interface IBroadcastCreatedRecordAction {
-  type: typeof BROADCAST_CREATED_RECORD;
-  payload: IBroadcastPayload;
-}
-export const broadcastCreatedRecordAction = (payload: IBroadcastPayload): IBroadcastCreatedRecordAction => ({
-  type: BROADCAST_CREATED_RECORD,
-  payload,
-});
-
-// Enable, disable or delete a account.
+// Update an account's properties
 export const SET_ACCOUNT_STATE = 'SET_ACCOUNT_STATE';
 export interface ISetAccountStateAction {
   type: typeof SET_ACCOUNT_STATE;
+  payload: Partial<IAccount> & { account_id: string, is_deleted?: boolean }; // TODO: Decouple deletion to another action.
+}
+export const setAccountStateAction = (update: Partial<IAccount> & { account_id: string, is_deleted?: boolean }): ISetAccountStateAction => ({
+  type: SET_ACCOUNT_STATE,
+  payload: update,
+});
+
+// Upload an account state to the backend and optionally forward to other connected user(s).
+export const UPLOAD_ACCOUNT_STATE = 'UPLOAD_ACCOUNT_STATE';
+export interface IUploadAccountStateAction {
+  type: typeof UPLOAD_ACCOUNT_STATE;
   payload: IAccountState;
 }
-export const setAccountStateAction = (status: IAccountState): ISetAccountStateAction => ({
-  type: SET_ACCOUNT_STATE,
+export const uploadAccountStateAction = (status: IAccountState): IUploadAccountStateAction => ({
+  type: UPLOAD_ACCOUNT_STATE,
   payload: status,
 });
 
-// Broadcast a account state to other connected user(s).
-export const BROADCAST_ACCOUNT_STATE = 'BROADCAST_ACCOUNT_STATE';
-export interface IBroadcastAccountStateAction {
-  type: typeof BROADCAST_ACCOUNT_STATE;
-  payload: IAccountState;
+// Open or close the new account form
+export const SHOW_NEW_ACCOUNT_FORM = 'SHOW_NEW_ACCOUNT_FORM';
+export interface IShowNewAccountFormAction {
+  type: typeof SHOW_NEW_ACCOUNT_FORM;
+  payload: boolean;
 }
-export const broadcastAccountStateAction = (status: IAccountState): IBroadcastAccountStateAction => ({
-  type: BROADCAST_ACCOUNT_STATE,
-  payload: status,
+export const showNewAccountFormAction = (show: boolean): IShowNewAccountFormAction => ({
+  type: SHOW_NEW_ACCOUNT_FORM,
+  payload: show,
 });
 
 // New account form management:
@@ -104,4 +93,34 @@ export interface IResetNewAccountFormAction {
 }
 export const resetNewAccountFormAction = (): IResetNewAccountFormAction => ({
   type: RESET_NEW_ACCOUNT_FORM,
+});
+
+export const SET_ACCOUNT_VIEWED = 'SET_ACCOUNT_VIEWED';
+export interface ISetAccountViewedAction {
+  type: typeof SET_ACCOUNT_VIEWED;
+  payload: string; // account id
+}
+export const setAccountViewedAction = (accountId: string): ISetAccountViewedAction => ({
+  type: SET_ACCOUNT_VIEWED,
+  payload: accountId,
+});
+
+export const UPLOAD_CREATED_RECORD = 'UPLOAD_CREATED_RECORD';
+export interface IUploadCreatedRecordAction {
+  type: typeof UPLOAD_CREATED_RECORD;
+  payload: IUploadPayload;
+}
+export const uploadCreatedRecordAction = (payload: IUploadPayload): IUploadCreatedRecordAction => ({
+  type: UPLOAD_CREATED_RECORD,
+  payload,
+});
+
+export const TOGGLE_NEW_ACCOUNT_FORM = 'TOGGLE_NEW_ACCOUNT_FORM';
+export interface IToggleNewAccountFormAction {
+  type: typeof TOGGLE_NEW_ACCOUNT_FORM;
+  payload: boolean;
+}
+export const toggleNewAccountFormAction = (show: boolean): IToggleNewAccountFormAction => ({
+  type: TOGGLE_NEW_ACCOUNT_FORM,
+  payload: show,
 });

@@ -13,11 +13,11 @@ export const toggleOverviewAction = (show: boolean): IToggleOverviewAction => ({
 export const TOGGLE_MENU = 'TOGGLE_MENU';
 export interface IToggleMenuAction {
   type: typeof TOGGLE_MENU;
-  payload: { show: boolean; showAuthentication: boolean };
+  payload: boolean 
 }
-export const toggleMenuAction = (show: boolean, showAuthentication: boolean = true): IToggleMenuAction => ({
+export const toggleMenuAction = (show: boolean): IToggleMenuAction => ({
   type: TOGGLE_MENU,
-  payload: { show, showAuthentication },
+  payload: show,
 });
 
 export const SET_ANCHOR_EL = 'SET_ANCHOR_EL';
@@ -28,36 +28,6 @@ export interface ISetAnchorElAction {
 export const setAnchorElAction = (anchorEl: HTMLElement | null): ISetAnchorElAction => ({
   type: SET_ANCHOR_EL,
   payload: anchorEl,
-});
-
-export const SET_ANCHOR_EL_CATEGORIES = 'SET_ANCHOR_EL_CATEGORIES';
-export interface ISetAnchorElCategoriesAction {
-  type: typeof SET_ANCHOR_EL_CATEGORIES;
-  payload: HTMLElement | null;
-}
-export const setAnchorElCategoriesAction = (anchorElCategories: HTMLElement | null): ISetAnchorElCategoriesAction => ({
-  type: SET_ANCHOR_EL_CATEGORIES,
-  payload: anchorElCategories,
-});
-
-export const SET_ANCHOR_EL_CLOSED_ACCOUNTS = 'SET_ANCHOR_EL_CLOSED_ACCOUNTS';
-export interface ISetAnchorElClosedAccountsAction {
-  type: typeof SET_ANCHOR_EL_CLOSED_ACCOUNTS;
-  payload: HTMLElement | null;
-}
-export const setAnchorElClosedAccountsAction = (anchorElClosedAccounts: HTMLElement | null): ISetAnchorElClosedAccountsAction => ({
-  type: SET_ANCHOR_EL_CLOSED_ACCOUNTS,
-  payload: anchorElClosedAccounts,
-});
-
-export const SHOW_MY_BETS = 'SHOW_MY_BETS';
-export interface IShowAccountTransactionsAction {
-  type: typeof SHOW_MY_BETS;
-  payload: boolean;
-}
-export const showAccountTransactionsAction = (show: boolean): IShowAccountTransactionsAction => ({
-  type: SHOW_MY_BETS,
-  payload: show,
 });
 
 export const SET_REPORT_NAME = 'SET_REPORT_NAME';

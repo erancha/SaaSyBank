@@ -18,15 +18,15 @@ User authentication is securely managed through Google.
   - [Overview](#overview)
   - [Architecture](#architecture)
     - [1. **Backend**](#1-backend)
-      - [1.1 **Application Load Balancer (ALB)**](#11-application-load-balancer-alb)
-      - [1.2 **ECS with Fargate**](#12-ecs-with-fargate)
-      - [1.3 **RDS with PostgreSQL**](#13-rds-with-postgresql)
-      - [1.4 **SQS**](#14-sqs)
+      - [**Application Load Balancer (ALB)**](#application-load-balancer-alb)
+      - [**ECS with Fargate**](#ecs-with-fargate)
+      - [**RDS with PostgreSQL**](#rds-with-postgresql)
+      - [**SQS**](#sqs)
     - [2. **Frontend**](#2-frontend)
-    - [3. Security Considerations](#3-security-considerations)
-    - [4. Scalability, Performance and Resiliency](#4-scalability-performance-and-resiliency)
+    - [3. **Security** Considerations](#3-security-considerations)
+    - [4. **Scalability**, **Performance** and **Resiliency**](#4-scalability-performance-and-resiliency)
     - [5. Flexible **Deployment**](#5-flexible-deployment)
-    - [6. Monitoring & Logging](#6-monitoring--logging)
+    - [6. **Monitoring** and **Logging**](#6-monitoring-and-logging)
   - [Summary](#summary)
 
 <!-- tocstop -->
@@ -47,7 +47,7 @@ User authentication is securely managed through Google.
 
 ## Architecture
 
-![Architecture Diagram](https://lucid.app/publicSegments/view/69c70e24-cb99-4f28-8cf9-59329f1bc55b/image.jpeg)
+![Architecture Diagram](https://lucid.app/publicSegments/view/c250dae6-bba1-452d-ad1d-1b40cb5a9175/image.jpeg)
 
 ### 1. **Backend**
 
@@ -78,14 +78,14 @@ User authentication is securely managed through Google.
 - Delivered globally via **AWS CloudFront**
 - Technology stack: **React**, **Redux** (HOC), **TypeScript**
 
-### 3. Security Considerations
+### 3. **Security** Considerations
 
 - Data in transit is encrypted with **HTTPS**
 - User authentication via AWS Cognito with **Google** integration
 - ECS Fargate and Elasticache Redis are in a **private subnet**
 - IAM roles follow the least privilege principle
 
-### 4. Scalability, Performance and Resiliency
+### 4. **Scalability**, **Performance** and **Resiliency**
 
 - Serverless architecture enables automatic scaling
 - Elasticache Redis enhances the scalability of read operations
@@ -96,7 +96,7 @@ User authentication is securely managed through Google.
 - **Modes**: Single-tenant (isolated environments) and multi-tenant (shared environments with data segregation)
 - CloudFormation Parameter: To specify deployment type
 
-### 6. Monitoring & Logging
+### 6. **Monitoring** and **Logging**
 
 - **Response Time**: API calls < 5 seconds
 - **Monitoring** and **logging** via AWS CloudWatch

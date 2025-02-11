@@ -1,7 +1,6 @@
 const http = require('http');
 const express = require('express');
 const WebSocket = require('ws');
-const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { CURRENT_TASK_ID } = require('./constants');
 const { onWebsocketConnect } = require('./websocketHandlers');
 const { testRedisConnectivity, disposeRedisClient } = require('./redisClient');
@@ -77,15 +76,10 @@ bankingRouter.post('/account', async (req, res) => {
   try {
     const userId = '43e4c8a2-4081-70d9-613a-244f8f726307'; // bettyuser100@gmail.com
     const result = await dbData.createAccount(accountId, initialBalance, userId, tenantId);
-    if (result.rowCount === 0) {
-      return res.status(409).json({ message: 'Account already exists' });
-    }
-
-    enqueueExecutedTransaction({ path: req.path, body: req.body });
-
+    if (!result) return res.status(409).json({ message: 'Account already exists' });
     res.status(201).json({
       message: 'Account created successfully',
-      account: result.rows[0],
+      account: result,
     });
   } catch (error) {
     console.error(error);
@@ -96,19 +90,14 @@ bankingRouter.post('/account', async (req, res) => {
 // Get all accounts
 bankingRouter.get('/accounts/:tenantId', async (req, res) => {
   const { tenantId } = req.params;
-  if (!tenantId) {
-    return res.status(400).json({ message: 'Tenant ID is required' });
-  }
+  if (!tenantId) return res.status(400).json({ message: 'Tenant ID is required' });
 
   try {
     const result = await dbData.getAllAccounts(tenantId);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'No accounts found for this tenant' });
-    }
-
+    if (result.length === 0) return res.status(404).json({ message: 'No accounts found for this tenant' });
     res.json({
       message: 'Accounts retrieved successfully',
-      accounts: result.rows,
+      accounts: result,
     });
   } catch (error) {
     console.error('Error retrieving accounts:', error);
@@ -119,20 +108,15 @@ bankingRouter.get('/accounts/:tenantId', async (req, res) => {
 // Handle getting balance requests
 bankingRouter.get('/balance/:tenantId/:accountId', async (req, res) => {
   const { tenantId, accountId } = req.params;
-  if (!tenantId || !accountId) {
-    return res.status(400).json({ message: 'Both Tenant ID and Account ID are required' });
-  }
+  if (!tenantId || !accountId) return res.status(400).json({ message: 'Both Tenant ID and Account ID are required' });
 
   try {
-    const result = await dbData.getAccountBalance(tenantId, accountId);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Account not found' });
-    }
-
+    const { balance, accountFound } = await dbData.getAccountBalance(tenantId, accountId);
+    if (!accountFound) return res.status(404).json({ message: 'Account not found' });
     res.json({
       message: 'Balance retrieved successfully',
-      accountId: accountId,
-      balance: result.rows[0].balance,
+      accountId,
+      balance,
     });
   } catch (error) {
     console.error('Error retrieving balance:', error);
@@ -143,18 +127,12 @@ bankingRouter.get('/balance/:tenantId/:accountId', async (req, res) => {
 // Handle deposit requests
 bankingRouter.post('/deposit', async (req, res) => {
   const { amount, accountId, tenantId } = req.body;
-  if (!tenantId || !accountId || amount === undefined) {
-    return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
-  }
+  if (!tenantId || !accountId || amount === undefined) return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
 
   try {
     const result = await dbData.deposit(amount, accountId, tenantId);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Account not found' });
-    }
-    res.json({ message: 'Deposit successful', account: result.rows[0] });
-
-    enqueueExecutedTransaction({ path: req.path, body: req.body });
+    if (result.length === 0) return res.status(404).json({ message: 'Account not found' });
+    res.json({ message: 'Deposit successful', account: result[0] });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error processing deposit' });
@@ -164,18 +142,12 @@ bankingRouter.post('/deposit', async (req, res) => {
 // Handle withdraw requests
 bankingRouter.post('/withdraw', async (req, res) => {
   const { amount, accountId, tenantId } = req.body;
-  if (!tenantId || !accountId || amount === undefined) {
-    return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
-  }
+  if (!tenantId || !accountId || amount === undefined) return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
 
   try {
     const result = await dbData.withdraw(amount, accountId, tenantId);
-    if (result.rowCount === 0 || result.rows[0].balance < 0) {
-      return res.status(400).json({ message: 'Insufficient funds or account not found' });
-    }
-    res.json({ message: 'Withdraw successful', account: result.rows[0] });
-
-    enqueueExecutedTransaction({ path: req.path, body: req.body });
+    if (result.length === 0) return res.status(404).json({ message: 'Account not found' });
+    res.json({ message: 'Withdraw successful', account: result[0] });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error processing withdrawal' });
@@ -185,23 +157,21 @@ bankingRouter.post('/withdraw', async (req, res) => {
 // Handle transfer requests
 bankingRouter.post('/transfer', async (req, res) => {
   const { amount, fromAccountId, toAccountId, tenantId } = req.body;
-  if (!tenantId || !fromAccountId || !toAccountId || amount === undefined) {
+  if (!tenantId || !fromAccountId || !toAccountId || amount === undefined)
     return res.status(400).json({ message: 'From Account ID, To Account ID, Tenant ID, and Amount are required' });
-  }
 
   try {
     const transferResult = await dbData.transfer(amount, fromAccountId, toAccountId, tenantId);
-    if (transferResult.error) {
-      return res.status(400).json({ message: transferResult.error });
+    if (transferResult.withdrawResult.length === 0) return res.status(404).json({ message: 'Account not found' });
+    else if (transferResult.depositResult.length === 0) return res.status(404).json({ message: 'To Account not found' });
+    else {
+      console.log(JSON.stringify(transferResult, null, 2));
+      res.json({
+        message: 'Transfer successful',
+        fromAccount: transferResult.withdrawResult[0].account_id,
+        toAccount: transferResult.depositResult[0].account_id,
+      });
     }
-
-    res.json({
-      message: 'Transfer successful',
-      fromAccount: transferResult.fromAccount,
-      toAccount: transferResult.toAccount,
-    });
-
-    enqueueExecutedTransaction({ path: req.path, body: req.body });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error processing transfer' });
@@ -212,12 +182,10 @@ bankingRouter.post('/transfer', async (req, res) => {
 bankingRouter.get('/transactions/:tenantId/:accountId', async (req, res) => {
   const { accountId, tenantId } = req.params;
 
-  if (!accountId || !tenantId) {
-    return res.status(400).json({ message: 'Account ID and Tenant ID are required' });
-  }
+  if (!accountId || !tenantId) return res.status(400).json({ message: 'Account ID and Tenant ID are required' });
 
   try {
-    const transactions = await dbData.getAccountTransactions(accountId, tenantId);
+    const transactions = await dbData.getTransactions(accountId, tenantId);
     res.json({ transactions });
   } catch (error) {
     console.error(error);
@@ -230,29 +198,6 @@ app.use((req, res) => {
   console.error({ req, message: 'Path not found' });
   res.status(404).json({ message: 'Path not found' });
 });
-
-//=========================================================================================================================
-// SQS - queueing executed transactions data
-//=========================================================================================================================
-const sqsClient = new SQSClient({ region: process.env.APP_AWS_REGION });
-
-async function enqueueExecutedTransaction(messageBody) {
-  const EXECUTED_TRANSACTIONS_QUEUE_URL = process.env.EXECUTED_TRANSACTIONS_QUEUE_URL;
-  try {
-    const data = await sqsClient.send(
-      new SendMessageCommand({
-        QueueUrl: EXECUTED_TRANSACTIONS_QUEUE_URL,
-        MessageGroupId: 'Default', // Required for FIFO queues
-        MessageBody: JSON.stringify(messageBody),
-      })
-    );
-    // console.log(`Message sent to SQS: ${data.MessageId}`);
-    return data;
-  } catch (error) {
-    console.error(`Error sending message to SQS queue ${EXECUTED_TRANSACTIONS_QUEUE_URL}:`, error);
-    throw error;
-  }
-}
 
 const cleanup = async () => {
   await disposeRedisClient();

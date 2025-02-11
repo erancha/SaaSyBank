@@ -68,6 +68,7 @@ exports.handler = async (event) => {
           id SERIAL,
           tenant_id TEXT NOT NULL,
           account_id TEXT NOT NULL,
+          executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           transaction BYTEA NOT NULL,
           PRIMARY KEY (tenant_id, account_id, id)
       );

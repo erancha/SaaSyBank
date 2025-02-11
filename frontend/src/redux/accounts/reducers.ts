@@ -1,20 +1,21 @@
-import { AccountsState } from '../store/types';
-import initialState from '../store/initialState';
+import { AccountsState, IAccount } from '../store/types';
 import {
   SET_ACCOUNTS,
   ISetAccountsAction,
+  SET_CURRENT_ACCOUNT,
+  ISetCurrentAccountAction,
   TOGGLE_NEW_ACCOUNT_FORM,
   IToggleNewAccountFormAction,
   ADD_ACCOUNT,
   IAddAccountAction,
   SET_ACCOUNT_VIEWED,
   ISetAccountViewedAction,
-  BROADCAST_CREATED_RECORD,
-  IBroadcastCreatedRecordAction,
+  UPLOAD_CREATED_RECORD,
+  IUploadCreatedRecordAction,
   SET_ACCOUNT_STATE,
   ISetAccountStateAction,
-  BROADCAST_ACCOUNT_STATE,
-  IBroadcastAccountStateAction,
+  UPLOAD_ACCOUNT_STATE,
+  IUploadAccountStateAction,
   UPDATE_NEW_ACCOUNT_FIELD,
   IUpdateNewAccountFieldAction,
   SET_NEW_ACCOUNT_ERRORS,
@@ -32,76 +33,101 @@ type HandledActions =
   | ISetNewAccountErrorsAction
   | IAddAccountAction
   | ISetAccountViewedAction
-  | IBroadcastCreatedRecordAction
+  | IUploadCreatedRecordAction
   | ISetAccountStateAction
-  | IBroadcastAccountStateAction;
+  | IUploadAccountStateAction
+  | ISetCurrentAccountAction;
 
-export const accountsReducers = (state: AccountsState = initialState.accounts, action: HandledActions): AccountsState => {
+const initialState: AccountsState = {
+  showNewAccountForm: false,
+  accounts: [],
+  currentAccountId: null,
+  newRecordToUpload: null,
+  stateToUpload: null,
+  // accountIdToDelete: null,
+  newAccountForm: {
+    id: '',
+    balance: 0,
+    errors: {},
+  },
+};
+
+export const accountsReducers = (state: AccountsState = initialState, action: HandledActions): AccountsState => {
   switch (action.type) {
     // Set accounts data.
     case SET_ACCOUNTS:
+      const firstEnabledAccount = action.payload.length > 0 ? action.payload.find((acc) => !acc.is_disabled) : null;
       return {
         ...state,
         accounts: [...action.payload],
+        currentAccountId: firstEnabledAccount ? firstEnabledAccount.account_id : null,
       };
 
-    case TOGGLE_NEW_ACCOUNT_FORM:
+    case SET_CURRENT_ACCOUNT:
       return {
         ...state,
-        showNewAccountForm: action.payload,
-        ...(action.payload
-          ? {
-              newAccountForm: {
-                id: uuidv4(),
-                balance: 0,
-                errors: {},
-              },
-            }
-          : {}),
+        currentAccountId: action.payload,
       };
 
-    // Add a account.
+    // Add an account.
     case ADD_ACCOUNT: {
       return {
         ...state,
-        accounts: [action.payload, ...state.accounts],
+        accounts: [...state.accounts, action.payload],
       };
     }
 
-    // Mark a account as viewed.
+    // Mark an account as viewed.
     case SET_ACCOUNT_VIEWED:
       return {
         ...state,
         accounts: state.accounts.map((account) => (account.account_id === action.payload ? { ...account, viewed: true } : account)),
       };
 
-    // Broadcast a new record to other connected user(s).
-    case BROADCAST_CREATED_RECORD:
+    // Upload a new record to the backend and optionally forward to other connected user(s).
+    case UPLOAD_CREATED_RECORD:
       return {
         ...state,
-        recordToBroadcast: action.payload,
+        newRecordToUpload: action.payload,
       };
 
-    // Enable, disable or delete a account.
+    // Update an account's properties
     case SET_ACCOUNT_STATE: {
       return {
         ...state,
-        accounts: action.payload.is_deleted
-          ? state.accounts.filter((account) => account.account_id !== action.payload.account_id)
-          : state.accounts.map((account) =>
-              account.account_id === action.payload.account_id ? { ...account, is_disabled: action.payload.is_disabled } : account
-            ),
+        accounts: state.accounts.map((account) =>
+          account.account_id === action.payload.account_id
+            ? action.payload.is_deleted // TODO: Isolate deletion to another action.
+              ? undefined // Filter out deleted accounts
+              : { ...account, ...action.payload }
+            : account
+        ).filter((account): account is IAccount => account !== undefined),
       };
     }
 
-    // Broadcast a account state to other connected user(s).
-    case BROADCAST_ACCOUNT_STATE:
+    // Upload an account state to the backend and optionally forward to other connected user(s).
+    case UPLOAD_ACCOUNT_STATE:
       return {
         ...state,
-        stateToBroadcast: action.payload,
+        stateToUpload: action.payload,
       };
 
     // New account form management:
+    case TOGGLE_NEW_ACCOUNT_FORM:
+      return {
+        ...state,
+        showNewAccountForm: action.payload,
+        ...(action.payload
+          ? {
+            newAccountForm: {
+              id: uuidv4(),
+              balance: 0,
+              errors: {},
+            },
+          }
+          : {}),
+      };
+
     case UPDATE_NEW_ACCOUNT_FIELD:
       return {
         ...state,
@@ -124,11 +150,7 @@ export const accountsReducers = (state: AccountsState = initialState.accounts, a
     case RESET_NEW_ACCOUNT_FORM:
       return {
         ...state,
-        newAccountForm: {
-          id: '',
-          balance: 0,
-          errors: {},
-        },
+        newAccountForm: initialState.newAccountForm,
       };
 
     default:

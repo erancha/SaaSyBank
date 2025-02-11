@@ -116,7 +116,7 @@ function Execute-Requests {
                     ExpectedResponse = '{"message":"Balance retrieved successfully","accountId":"' + $toAccountId + '","balance":"200.00"}'
                 },
                 @{
-                    Name             = "Get all Transactions"
+                    Name             = "Get Transactions"
                     Method           = "GET"
                     Url              = "/api/banking/transactions/$tenantId/$accountId"
                 }
@@ -147,19 +147,13 @@ function Execute-Requests {
                 }
         
                 $responseJson = $response | ConvertTo-Json -Compress
+                Display-Output -title $request.Name -requestJson $requestJson -responseJson $responseJson -expectedResponse $request.ExpectedResponse
             } catch {
-                # Improved error logging
-                $errorMessage = $_.Exception.Message
-                $errorCategory = $_.Exception.GetType().FullName
-                $errorStackTrace = $_.ScriptStackTrace
-        
-                Write-Error "Error occurred while sending request: Method=$method, URL=$url"
-                Write-Error "Error Message: $errorMessage"
-                Write-Error "Error Category: $errorCategory"
-                Write-Error "Error Stack Trace: $errorStackTrace"
+                Display-Output -title $request.Name -requestJson $requestJson 
+                Write-Error "Error Message: $($_.Exception.Message)"
+                # Write-Error "Error Category: $($_.Exception.GetType().FullName)"
+                # Write-Error "Error Stack Trace: $($_.ScriptStackTrace)"
             }
-        
-            Display-Output -title $request.Name -requestJson $requestJson -responseJson $responseJson -expectedResponse $request.ExpectedResponse
         }
         
         $requests = @()
@@ -185,28 +179,36 @@ $initRequests = @(
         Url    = "/api/banking/health?redis=true"
     }
 )
-Execute-Requests -loadBalancerURL $loadBalancerURL -requests $initRequests
 
 # Execute requests
-$showOutput = $parallelCount -eq 1 -and $iterationsCount -le 2
-$jobs = @()
-for ($j = 0; $j -lt $parallelCount; $j++) {
-    $job = Start-Job -ScriptBlock ${function:Execute-Requests} -ArgumentList $loadBalancerURL, $requests, $iterationsCount, $showOutput
-    $jobs += $job
+Execute-Requests -loadBalancerURL $loadBalancerURL -requests $initRequests
+
+# Check if parallelCount is 1 to execute requests directly
+if ($parallelCount -eq 1) {
+    Execute-Requests -loadBalancerURL $loadBalancerURL -requests $requests -iterationsCount $iterationsCount
+} else {
+    # Execute requests with jobs if parallelCount is greater than 1
+    $showOutput = $iterationsCount -le 2
+    $jobs = @()
+    for ($j = 0; $j -lt $parallelCount; $j++) {
+        $job = Start-Job -ScriptBlock ${function:Execute-Requests} -ArgumentList $loadBalancerURL, $requests, $iterationsCount, $showOutput
+        $jobs += $job
+    }
+
+    # Wait for all jobs to complete
+    $jobs | Wait-Job
+
+    # Check conditions to display output
+    foreach ($job in $jobs) {
+        Write-Host "Output from Job $($job.Id):"
+        Receive-Job -Job $job
+    }
+
+    # Optionally clean up jobs
+    Get-Job | Remove-Job
 }
 
-# Wait for all jobs to complete
-$jobs | Wait-Job
-
-# Check conditions to display output
-foreach ($job in $jobs) {
-    Write-Host "Output from Job $($job.Id):"
-    Receive-Job -Job $job
-}
-
-# Optionally clean up jobs
-Get-Job | Remove-Job
-
+# Execute the initial requests again at the end, to get the number of created tables and accounts ("Database checked/created, table created, record added, and deleted successfully. Current records counts: 2 accounts, 4 transactions.")
 Execute-Requests -loadBalancerURL $loadBalancerURL -requests $initRequests
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime

@@ -34,6 +34,13 @@ if (-not $skipBuildDeploy) {
 }
 
 if ($deleteStack) {
+    $scriptPath = "../detach-sg-from-elasticache.ps1"
+    if (Test-Path $scriptPath) {
+        $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
+        Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Detaching SG from elasticache's SG ..."
+        & $scriptPath
+    }
+
     $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
     Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Deleting stack '$($commonConstants.stackName)' ..."
 

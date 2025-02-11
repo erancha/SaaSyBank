@@ -1,26 +1,17 @@
 import React from 'react';
 import { connect } from 'react-redux';
 import { bindActionCreators, Dispatch } from 'redux';
-import {
-  AppState,
-  IConnectionAndUsername,
-  IAccount,
-  IBroadcastPayload,
-  isNewAccount,
-  isNewTransaction,
-  INewTransaction,
-  ITransaction,
-  IAccountState,
-} from 'redux/store/types';
-import { setAnalyticsTypeAction, showAccountTransactionsAction } from '../redux/mnu/actions';
+import { AppState, IConnectionAndUsername, IAccount, IUploadPayload, IAccountState, INewTransaction, BankingFunctionType } from 'redux/store/types';
+import { setAnalyticsTypeAction } from '../redux/mnu/actions';
 import { setIsAdminAction } from '../redux/auth/actions';
 import { setWSConnectedAction, setAppVisibleAction, setConnectionsAndUsernamesAction, toggleConnectionsAction } from '../redux/websockets/actions';
-import { setAccountsAction, addAccountAction, setAccountStateAction } from '../redux/accounts/actions';
+import { setAccountsAction, addAccountAction, setAccountStateAction, setCurrentAccountAction } from '../redux/accounts/actions';
+import { setTransactionsAction } from '../redux/transactions/actions';
 import appConfigData from '../appConfig.json';
 import { Network } from 'lucide-react';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { getAccount } from '../utils/utils';
+import { getAccount } from 'utils/utils';
 
 class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
   private webSocket: WebSocket | null = null;
@@ -78,14 +69,14 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
       this.disconnect();
     }
 
-    this.compareAndSendToBackend(prevProps);
+    this.compareAndUpload(prevProps);
   }
 
-  // compares the current props with the previous props, and send to the backend via the websocket when applicable.
-  private compareAndSendToBackend(prevProps: WebSocketProps) {
-    const { recordToBroadcast, accountStateToBroadcast, analyticsType, addAccountAction } = this.props;
+  // Compare the current props with the previous props, and upload to the backend via the websocket when applicable.
+  private compareAndUpload(prevProps: WebSocketProps) {
+    const { newRecordToUpload, accountStateToUpload, analyticsType } = this.props;
 
-    const sendToBackend = (data: any) => {
+    const upload = (data: any) => {
       try {
         this.webSocket?.send(JSON.stringify(data)); // JSON.stringify({ action: 'WebsocketGenericReceiver', data })
       } catch (error) {
@@ -96,12 +87,18 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
     // CRUD: Commands to Create data:
     //-----------------------------------------
 
-    // If this is a new account, send it on the websocket connection:
-    if (recordToBroadcast && recordToBroadcast !== prevProps.recordToBroadcast) {
-      let record: IBroadcastPayload = recordToBroadcast;
-      if (isNewAccount(record)) {
-        addAccountAction({ ...record, is_disabled: true, viewed: false, user_id: '' });
-        sendToBackend({ command: { type: 'create', params: { account: record } } });
+    // Handle new record uploads (accounts, transactions)
+    if (newRecordToUpload && newRecordToUpload !== prevProps.newRecordToUpload) {
+      switch (newRecordToUpload.type) {
+        case 'account':
+          upload({ command: { type: 'create', params: { account: newRecordToUpload.data } } });
+          break;
+        case 'transaction':
+          const transaction = newRecordToUpload.data as INewTransaction;
+          const toAccountId = transaction.bankingFunction === BankingFunctionType.Transfer ? transaction.toAccountId : transaction.accountId;
+          const toUserId = getAccount(this.props.accounts, toAccountId)?.user_id;
+          upload({ command: { type: 'create', params: { transaction: newRecordToUpload.data }, to: toUserId } }); // TODO: notify this.props.userId as well
+          break;
       }
     }
 
@@ -110,21 +107,31 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
 
     // read data for a report:
     if (analyticsType && analyticsType !== prevProps.analyticsType) {
-      sendToBackend({ command: { type: 'read', params: { analyticsType }, to: 'self' } });
+      upload({ command: { type: 'read', params: { analyticsType } } });
     }
 
     // CRUD: Commands to Update or Delete data:
     //-----------------------------------------
 
-    // Send account id to be closed, reopened or deleted on the WebSocket connection:
-    if (accountStateToBroadcast && accountStateToBroadcast !== prevProps.accountStateToBroadcast) {
-      const to = getAccount(this.props.accounts, accountStateToBroadcast.account_id)?.user_id;
-      if (!accountStateToBroadcast.is_deleted) {
-        // CRUD: Command to Update data:
-        sendToBackend({ command: { type: 'update', params: { account: accountStateToBroadcast }, to } });
+    // Handle account state uploads (enable/disable/delete)
+    if (accountStateToUpload && accountStateToUpload !== prevProps.accountStateToUpload) {
+      const account = this.props.accounts.find((acc) => acc.account_id === accountStateToUpload.account_id);
+      if (!accountStateToUpload.is_deleted) {
+        upload({
+          command: {
+            type: 'update',
+            params: { account: accountStateToUpload },
+            to: account?.user_id,
+          },
+        });
       } else {
-        // CRUD: Command to Delete data:
-        sendToBackend({ command: { type: 'delete', params: { account: { account_id: accountStateToBroadcast.account_id } }, to } });
+        upload({
+          command: {
+            type: 'delete',
+            params: { account: { account_id: accountStateToUpload.account_id } },
+            to: account?.user_id,
+          },
+        });
       }
     }
   }
@@ -141,7 +148,8 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
       <div
         className='network-container'
         title={isWsConnected ? `Connected, last connections update on ${lastConnectionsTimestamp}` : 'Disconnected'}
-        onClick={() => toggleConnectionsAction(!showConnections)}>
+        onClick={() => toggleConnectionsAction(!showConnections)}
+      >
         <div className='left-column'>
           <Network size={20} className={`network-icon ${isWsConnected ? 'connected' : 'disconnected'}`} />
           <span className='last-connections-timestamp'>{lastConnectionsTimestamp}</span>
@@ -223,11 +231,9 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
   private handleWebsocketIncomingEvent(eventData: string) {
     // console.log(eventData);
     const parsedEventData = JSON.parse(eventData);
-
     if (parsedEventData.isAdmin) {
-      const { setIsAdminAction, toggleConnectionsAction } = this.props;
-      setIsAdminAction();
-      toggleConnectionsAction(true);
+      this.props.setIsAdminAction();
+      this.props.toggleConnectionsAction(true);
     }
 
     // CRUD: event containing Created data
@@ -236,12 +242,8 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
     }
     // CRUD: event containing Read data
     else if (parsedEventData.dataRead) {
-      if (parsedEventData.dataRead.accounts) {
-        this.handleDataRead(parsedEventData.dataRead);
-        this.handleIncomingConnectionsAndUsernames(parsedEventData.connectionsAndUsernames);
-      } else if (parsedEventData.dataRead.accountsAnalytics) {
-        // this.props.setAccountsAnalyticsDataAction(parsedEventData.dataRead.accountsAnalytics);
-      }
+      this.handleDataRead(parsedEventData.dataRead);
+      // if (parsedEventData.dataRead.accounts) this.handleIncomingConnectionsAndUsernames(parsedEventData.connectionsAndUsernames);
     }
     // CRUD: event containing Updated data
     else if (parsedEventData.dataUpdated) {
@@ -250,10 +252,10 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
     // CRUD: event containing Deleted data
     else if (parsedEventData.dataDeleted) {
       this.handleDataDeleted(parsedEventData.dataDeleted);
-    } else if (parsedEventData.connectionsAndUsernames) {
-      this.handleIncomingConnectionsAndUsernames(parsedEventData.connectionsAndUsernames);
-    } else if (parsedEventData.pong) {
-      this.handleIncomingConnectionsAndUsernames(null); // only updates lastConnectionsTimestamp*
+      // } else if (parsedEventData.connectionsAndUsernames) {
+      //   this.handleIncomingConnectionsAndUsernames(parsedEventData.connectionsAndUsernames);
+      // } else if (parsedEventData.pong) {
+      //   this.handleIncomingConnectionsAndUsernames(null); // only updates lastConnectionsTimestamp*
     } else {
       console.warn(eventData.substring(0, 500));
     }
@@ -261,25 +263,46 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
 
   // CRUD: event containing Created data
   private handleDataCreated(dataCreated: any) {
-    const { addAccountAction } = this.props;
-
     if (dataCreated.account) {
       const newReceivedAccount: IAccount = { ...dataCreated.account };
-      addAccountAction({ ...newReceivedAccount, viewed: true });
+      this.props.addAccountAction({ ...newReceivedAccount, viewed: true });
+    } else if (dataCreated.transaction) {
+      // Balance updates
+      if (dataCreated.transaction.account) {
+        const account = dataCreated.transaction.account;
+
+        // For a transfer that affects two accounts
+        if (account.withdrawResult && account.depositResult) {
+          const { withdrawResult, depositResult } = dataCreated.transaction.account;
+          this.props.setAccountStateAction({
+            account_id: withdrawResult.account_id,
+            balance: withdrawResult.balance,
+          });
+          this.props.setAccountStateAction({
+            account_id: depositResult.account_id,
+            balance: depositResult.balance,
+          });
+        } else {
+          this.props.setAccountStateAction({
+            account_id: account.account_id,
+            balance: account.balance,
+          });
+        }
+      }
     }
   }
 
   // CRUD: event containing Read data
   private handleDataRead(dataRead: any) {
-    const { setAccountsAction } = this.props;
-    if (dataRead.accounts) setAccountsAction(dataRead.accounts.map((account: IAccount) => ({ ...account, viewed: true })));
+    if (dataRead.accounts) this.props.setAccountsAction(dataRead.accounts.map((account: IAccount) => ({ ...account, viewed: true })));
+    if (dataRead.transactions) this.props.setTransactionsAction(dataRead.transactions);
   }
 
   // CRUD: event containing Updated data
   private handleDataUpdated(dataUpdated: any) {
     if (dataUpdated.account) {
-      const { setAccountStateAction } = this.props;
-      setAccountStateAction(dataUpdated.account);
+      this.props.setAccountStateAction(dataUpdated.account);
+      if (!dataUpdated.account.is_disabled) this.props.setCurrentAccountAction(dataUpdated.account.account_id);
       toast(`Account ${dataUpdated.account.account_id} is now ${dataUpdated.account.is_disabled ? 'disabled' : 'enabled'}`);
     }
   }
@@ -287,8 +310,7 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
   // CRUD: event containing Deleted data
   private handleDataDeleted(dataDeleted: any) {
     if (dataDeleted.account) {
-      const { setAccountStateAction } = this.props;
-      setAccountStateAction({
+      this.props.setAccountStateAction({
         account_id: dataDeleted.account.account_id,
         is_deleted: true,
         is_disabled: true,
@@ -298,17 +320,18 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
   }
 
   // Sets the connections and usernames in the state
-  private handleIncomingConnectionsAndUsernames(connections: IConnectionAndUsername[] | null) {
-    const { setConnectionsAndUsernamesAction, isAdmin, toggleConnectionsAction } = this.props;
-    setConnectionsAndUsernamesAction(connections);
-    // Show the current connections whenever the backend informs this frontend about a change in the connected users:
-    if (connections && isAdmin) toggleConnectionsAction(true);
-  }
+  // private handleIncomingConnectionsAndUsernames(connections: IConnectionAndUsername[] | null) {
+  //   const { setConnectionsAndUsernamesAction, isAdmin, toggleConnectionsAction } = this.props;
+  //   setConnectionsAndUsernamesAction(connections);
+  //   // Show the current connections whenever the backend informs this frontend about a change in the connected users:
+  //   if (connections && isAdmin) toggleConnectionsAction(true);
+  // }
 }
 
 interface WebSocketProps {
   JWT: string | null;
   isAdmin: boolean | null;
+  userId: string | null;
   isWsConnected: boolean;
   setWSConnectedAction: typeof setWSConnectedAction;
   isAppVisible: boolean;
@@ -319,14 +342,15 @@ interface WebSocketProps {
   toggleConnectionsAction: typeof toggleConnectionsAction;
   lastConnectionsTimestamp: string;
   lastConnectionsTimestampISO: string;
-  accountStateToBroadcast: IAccountState | null;
-  recordToBroadcast: IBroadcastPayload | null;
+  newRecordToUpload: IUploadPayload | null;
+  accountStateToUpload: IAccountState | null;
   accounts: IAccount[];
   setAccountsAction: typeof setAccountsAction;
+  setTransactionsAction: typeof setTransactionsAction;
   analyticsType: string | null;
-  showAccountTransactionsAction: typeof showAccountTransactionsAction;
   setAccountStateAction: typeof setAccountStateAction;
   addAccountAction: typeof addAccountAction;
+  setCurrentAccountAction: typeof setCurrentAccountAction;
   setIsAdminAction: typeof setIsAdminAction;
   setAnalyticsTypeAction: typeof setAnalyticsTypeAction;
 }
@@ -339,6 +363,7 @@ interface WebSocketState {
 const mapStateToProps = (state: AppState) => ({
   JWT: state.auth.JWT,
   isAdmin: state.auth.isAdmin,
+  userId: state.auth.userId,
   isWsConnected: state.websockets.isConnected,
   isAppVisible: state.websockets.isAppVisible,
   connectionsAndUsernames: state.websockets.connectionsAndUsernames,
@@ -346,8 +371,8 @@ const mapStateToProps = (state: AppState) => ({
   lastConnectionsTimestamp: state.websockets.lastConnectionsTimestamp,
   lastConnectionsTimestampISO: state.websockets.lastConnectionsTimestampISO,
   analyticsType: state.mnu.analyticsType,
-  recordToBroadcast: state.accounts.recordToBroadcast,
-  accountStateToBroadcast: state.accounts.stateToBroadcast,
+  newRecordToUpload: state.accounts.newRecordToUpload,
+  accountStateToUpload: state.accounts.stateToUpload,
   accounts: state.accounts.accounts,
 });
 
@@ -360,9 +385,10 @@ const mapDispatchToProps = (dispatch: Dispatch) =>
       setConnectionsAndUsernamesAction,
       toggleConnectionsAction,
       setAccountsAction,
+      setCurrentAccountAction,
       addAccountAction,
-      showAccountTransactionsAction,
       setAccountStateAction,
+      setTransactionsAction,
       setIsAdminAction,
       setAnalyticsTypeAction,
     },

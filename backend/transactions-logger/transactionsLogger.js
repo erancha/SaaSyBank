@@ -22,62 +22,48 @@ exports.handler = async (event) => {
   };
   const dbClient = new Client(dbParams);
 
-  const consoleLog = (message) => {}; // console.log(message); //
+  const consoleLog = (message) => {
+    //console.log(message);
+  };
   try {
     consoleLog(`${event.Records.length} records to process. Connecting to pg ... ${JSON.stringify(dbParams)}`);
     await dbClient.connect();
     consoleLog('Connected to pg.');
 
-    //  const userDataKey = getUserDataKey('23743842-4061-709b-44f8-4ef9a527509d'); // erancha .. once authentication will be implemented (TODO), transactions of each users will be encrypted by his/her own key.
+    //  const userDataKey = getUserDataKey('43e4c8a2-4081-70d9-613a-244f8f726307'); // bettyuser100@gmail.com
 
     for (const record of event.Records) {
       try {
-        // record.body:
-        // {
-        //    "path": "/deposit",
-        //    "body": {
-        //       "amount": 1000,
-        //       "accountId": "d40a84fd-0661-4456-a4d8-a62cc619c628",
-        //       "tenantId": "tenant1"
-        //    }
-        // }
         consoleLog(`record.body: ${record.body}`);
-        const { accountId, tenantId } = JSON.parse(record.body).body;
-        if (!tenantId) {
-          console.error('Invalid record data, tenantId not found!', record.body);
-          // Consider sending to dead-letter queue
-          continue;
-        } else if (!accountId) {
-          // Transfer operation: The handler inserts two records - one for the auditing of the 'fromAccount', and one for the 'toAccount':
-          //==============================================================================================================================
-          const { fromAccountId, toAccountId } = JSON.parse(record.body).body;
-          if (!fromAccountId || !toAccountId) {
-            console.error('Invalid record data, fromAccountId|toAccountId not found!', record.body);
-          } else {
-            const encryptedTransactionData = record.body; // await encrypt(userDataKey, record.body);
-            consoleLog({ tenantId, fromAccountId, toAccountId, encryptedTransactionData });
-            await dbClient.query('INSERT INTO accountTransactions (tenant_id, account_id, transaction) VALUES ($1, $2, $3) RETURNING *', [
-              tenantId,
-              fromAccountId,
-              encryptedTransactionData,
-            ]);
-
-            await dbClient.query('INSERT INTO accountTransactions (tenant_id, account_id, transaction) VALUES ($1, $2, $3) RETURNING *', [
-              tenantId,
-              toAccountId,
-              encryptedTransactionData,
-            ]);
-          }
-        } else {
-          // Other operations: The handler inserts one record:
-          //==================================================
+        const { bankingFunction, tenantId } = JSON.parse(record.body);
+        if (!bankingFunction || !tenantId) console.error('Invalid record: bankingFunction or tenantId not found!', record.body);
+        else {
           const encryptedTransactionData = record.body; // await encrypt(userDataKey, record.body);
-          consoleLog({ tenantId, accountId, encryptedTransactionData });
-          await dbClient.query('INSERT INTO accountTransactions (tenant_id, account_id, transaction) VALUES ($1, $2, $3) RETURNING *', [
-            tenantId,
-            accountId,
-            encryptedTransactionData,
-          ]);
+          if (bankingFunction !== 'transfer') {
+            const { accountId } = JSON.parse(record.body);
+            if (!accountId) console.error('Invalid record: accountId not found!', record.body);
+            else
+              await dbClient.query('INSERT INTO accountTransactions (tenant_id,account_id,transaction,executed_at) VALUES ($1,$2,$3,NOW()) RETURNING *', [
+                tenantId,
+                accountId,
+                encryptedTransactionData,
+              ]);
+          } else {
+            const { fromAccountId, toAccountId } = JSON.parse(record.body);
+            if (!fromAccountId || !toAccountId) console.error('Invalid record: fromAccountId or toAccountId not found!', record.body);
+            else {
+              await dbClient.query('INSERT INTO accountTransactions (tenant_id,account_id,transaction,executed_at) VALUES ($1,$2,$3,NOW()) RETURNING *', [
+                tenantId,
+                fromAccountId,
+                encryptedTransactionData,
+              ]);
+              await dbClient.query('INSERT INTO accountTransactions (tenant_id,account_id,transaction,executed_at) VALUES ($1,$2,$3,NOW()) RETURNING *', [
+                tenantId,
+                toAccountId,
+                encryptedTransactionData,
+              ]);
+            }
+          }
         }
       } catch (recordError) {
         console.error(`Error processing a record: ${record.body}: ${recordError}`);

@@ -96,6 +96,13 @@ try {
                 else {
                     Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Deployment completed successfully." -ForegroundColor Green
                     ./update-postman-collection.ps1
+
+                    $scriptPath = "./attach-sg-to-elasticache.ps1"
+                    if (Test-Path $scriptPath) {
+                        $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
+                        Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Attaching SG to elasticache's SG ..."
+                        & $scriptPath
+                    }
                 }
 
                 if ($prepareForFrontend) {

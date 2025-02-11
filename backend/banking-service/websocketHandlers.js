@@ -44,7 +44,7 @@ const onWebsocketConnect = async (socket, request) => {
   try {
     const isAdmin = currentUserId === process.env.ADMIN_USER_ID;
     const response = {
-      ...(await handleRead({ commandParams: { accounts: { all: isAdmin } }, connectedUserId: currentUserId })),
+      ...(await handleRead({ commandParams: { accounts: { all: true /*isAdmin*/ }, transactions: {/*TODO*/} }, connectedUserId: currentUserId })),
       ...(isAdmin ? { isAdmin } : {}),
     };
     writeResponse({ response, responseSocket: socket });
@@ -83,9 +83,9 @@ const onWebsocketMessage = async (message, socket) => {
 
     // the client didn't target another user to receive the response, or targeted itself:
     //-----------------------------------------------------------------------------------
-    if (!commandTargetUserId || commandTargetUserId === 'self') {
+    if (!commandTargetUserId || commandTargetUserId === 'undefined') {
       console.log(`Task ${CURRENT_TASK_ID}: Handling ${message} locally ...`);
-      const commandClientSocket = commandTargetUserId /*self*/ ? socket : undefined;
+      const commandClientSocket = commandTargetUserId === 'undefined' ? undefined : socket;
       await handleCommand({ commandType, commandParams, connectedUserId: socket.userId, commandClientSocket });
     } else {
       // the client targeted another user to receive the response:
@@ -98,8 +98,12 @@ const onWebsocketMessage = async (message, socket) => {
         await handleCommand({ commandType, commandParams, connectedUserId: commandTargetUserId, commandClientSocket });
       } else {
         const targetTaskId = await redisClient.hget(CONNECTED_CLIENTS_TASKS_MAP, commandTargetUserId);
-        if (!targetTaskId) console.error(`Task ${CURRENT_TASK_ID}: Target task not found in ${CONNECTED_CLIENTS_TASKS_MAP} for user ${commandTargetUserId}`);
-        else {
+        if (!targetTaskId) {
+          console.log(
+            `Task ${CURRENT_TASK_ID}: Target task not found in ${CONNECTED_CLIENTS_TASKS_MAP} for user ${commandTargetUserId}. Handling ${message} locally, without notifying the user ...`
+          );
+          await handleCommand({ commandType, commandParams });
+        } else {
           // Since the command is for another task, publish to Redis:
           console.log(`Task ${CURRENT_TASK_ID}: Delivering ${message}, thru channel 'task:${targetTaskId}' ...`);
           try {

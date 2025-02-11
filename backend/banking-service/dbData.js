@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 
 const pgPool = new Pool({
   host: process.env.RDS_ENDPOINT,
@@ -14,7 +15,7 @@ const pgPool = new Pool({
 // Middleware for logging parameters
 const logMiddleware = (fn) => {
   const wrappedFunction = async function (...args) {
-    if (process.env.ENABLE_ENHANCED_LOGGING) {
+    if (process.env.ENABLE_ENHANCED_LOGGING.toLowerCase() === 'true') {
       console.log(`Calling function: ${fn.name} with parameters: ${JSON.stringify(args)}`);
     }
     return await fn(...args);
@@ -23,6 +24,7 @@ const logMiddleware = (fn) => {
   return wrappedFunction;
 };
 
+// Check the health of the database
 const healthCheck = async () => {
   const pgClient = await pgPool.connect();
   try {
@@ -36,6 +38,7 @@ const healthCheck = async () => {
   }
 };
 
+// Create an account
 const createAccount = logMiddleware(async (accountId, initialBalance, user_id, tenantId) => {
   const pgClient = await pgPool.connect();
   try {
@@ -47,7 +50,8 @@ const createAccount = logMiddleware(async (accountId, initialBalance, user_id, t
       RETURNING *`,
       [accountId, initialBalance, user_id, tenantId, true]
     );
-    return result;
+    enqueueExecutedTransaction({ bankingFunction: 'createAccount', accountId, tenantId });
+    return result.rows[0] || undefined;
   } catch (error) {
     console.error('Error creating account', error);
     throw error; // Rethrow the error
@@ -56,6 +60,7 @@ const createAccount = logMiddleware(async (accountId, initialBalance, user_id, t
   }
 });
 
+// Enable or disable an account
 const setAccountState = logMiddleware(async (accountId, is_disabled, tenantId) => {
   const pgClient = await pgPool.connect();
   try {
@@ -67,7 +72,7 @@ const setAccountState = logMiddleware(async (accountId, is_disabled, tenantId) =
       RETURNING *`,
       [accountId, tenantId, is_disabled]
     );
-    return result.rows[0];
+    return result.rows[0]; // Return the updated account details
   } catch (error) {
     console.error('Error enabling account', error);
     throw error; // Rethrow the error
@@ -76,6 +81,7 @@ const setAccountState = logMiddleware(async (accountId, is_disabled, tenantId) =
   }
 });
 
+// Delete an account
 const deleteAccount = logMiddleware(async (accountId, tenantId) => {
   const pgClient = await pgPool.connect();
   try {
@@ -83,13 +89,11 @@ const deleteAccount = logMiddleware(async (accountId, tenantId) => {
       `
       DELETE FROM accounts 
       WHERE account_id = $1 AND tenant_id = $2 
-      RETURNING *`,
+      RETURNING account_id`,
       [accountId, tenantId]
     );
 
-    if (result.rowCount === 0) {
-      throw new Error('Account not found');
-    }
+    if (result.rowCount === 0) throw new Error('Account not found');
 
     return result.rows[0]; // Return the deleted account details
   } catch (error) {
@@ -100,6 +104,7 @@ const deleteAccount = logMiddleware(async (accountId, tenantId) => {
   }
 });
 
+// Get all accounts
 const getAllAccounts = logMiddleware(async (tenantId) => {
   const pgClient = await pgPool.connect();
   try {
@@ -116,6 +121,7 @@ const getAllAccounts = logMiddleware(async (tenantId) => {
   }
 });
 
+// Get accounts by user id
 const getAccountsByUserId = logMiddleware(async (userId) => {
   const pgClient = await pgPool.connect();
   try {
@@ -132,11 +138,14 @@ const getAccountsByUserId = logMiddleware(async (userId) => {
   }
 });
 
+// Get account balance
 const getAccountBalance = logMiddleware(async (tenantId, accountId) => {
   const pgClient = await pgPool.connect();
   try {
     const result = await pgClient.query('SELECT balance FROM accounts WHERE account_id = $1 AND tenant_id = $2', [accountId, tenantId]);
-    return result;
+    const accountFound = result.rows.length > 0;
+    const balance = accountFound ? result.rows[0].balance : null;
+    return { balance, accountFound };
   } catch (error) {
     console.error('Error getting balance', error);
     throw error; // Rethrow the error
@@ -145,6 +154,7 @@ const getAccountBalance = logMiddleware(async (tenantId, accountId) => {
   }
 });
 
+// Deposit
 const deposit = logMiddleware(async (amount, accountId, tenantId) => {
   const pgClient = await pgPool.connect();
   try {
@@ -153,7 +163,8 @@ const deposit = logMiddleware(async (amount, accountId, tenantId) => {
       accountId,
       tenantId,
     ]);
-    return result;
+    enqueueExecutedTransaction({ bankingFunction: 'deposit', amount, accountId, tenantId });
+    return result.rows;
   } catch (error) {
     console.error('Error during deposit', error);
     throw error; // Rethrow the error
@@ -162,15 +173,20 @@ const deposit = logMiddleware(async (amount, accountId, tenantId) => {
   }
 });
 
+//  Withdraw
 const withdraw = logMiddleware(async (amount, accountId, tenantId) => {
   const pgClient = await pgPool.connect();
   try {
-    const result = await pgClient.query('UPDATE accounts SET balance = balance - $1 WHERE account_id = $2 AND tenant_id = $3 RETURNING *', [
-      amount,
-      accountId,
-      tenantId,
-    ]);
-    return result;
+    const result = await pgClient.query(
+      `
+      UPDATE accounts 
+      SET balance = balance - $1
+      WHERE account_id = $2 AND tenant_id = $3 
+      RETURNING *`,
+      [amount, accountId, tenantId]
+    );
+    enqueueExecutedTransaction({ bankingFunction: 'withdraw', amount, accountId, tenantId });
+    return result.rows;
   } catch (error) {
     console.error('Error during withdrawal', error);
     throw error; // Rethrow the error
@@ -179,24 +195,20 @@ const withdraw = logMiddleware(async (amount, accountId, tenantId) => {
   }
 });
 
+// Transfer between two accounts
 const transfer = logMiddleware(async (amount, fromAccountId, toAccountId, tenantId) => {
   const pgClient = await pgPool.connect();
   try {
     await pgClient.query('BEGIN');
-
     const withdrawResult = await withdraw(amount, fromAccountId, tenantId);
-    if (withdrawResult.rowCount === 0) {
-      await pgClient.query('ROLLBACK');
-      throw new Error('From account not found or Insufficient funds');
+    let depositResult;
+    if (withdrawResult.length === 0) await pgClient.query('ROLLBACK');
+    else {
+      depositResult = await deposit(amount, toAccountId, tenantId);
+      if (depositResult.length === 0) await pgClient.query('ROLLBACK');
+      else await pgClient.query('COMMIT');
     }
-
-    const depositResult = await deposit(amount, toAccountId, tenantId);
-    if (depositResult.rowCount === 0) {
-      await pgClient.query('ROLLBACK');
-      throw new Error('To account not found');
-    }
-
-    await pgClient.query('COMMIT');
+    enqueueExecutedTransaction({ bankingFunction: 'transfer', amount, fromAccountId, toAccountId, tenantId });
     return { withdrawResult, depositResult };
   } catch (error) {
     await pgClient.query('ROLLBACK');
@@ -207,11 +219,24 @@ const transfer = logMiddleware(async (amount, fromAccountId, toAccountId, tenant
   }
 });
 
-const getAccountTransactions = logMiddleware(async (accountId, tenantId) => {
+// Get transactions for an account
+const getTransactions = logMiddleware(async (accountId, tenantId) => {
   const pgClient = await pgPool.connect();
   try {
-    const result = await pgClient.query('SELECT * FROM accountTransactions WHERE account_id = $1 AND tenant_id = $2', [accountId, tenantId]);
-    return result.rows;
+    const result = await pgClient.query(
+      'SELECT id,executed_at,transaction FROM accountTransactions WHERE account_id = $1 AND tenant_id = $2 ORDER BY executed_at DESC',
+      [accountId, tenantId]
+    );
+
+    return result.rows.map((row) => {
+      const decryptedTransaction = /*decrypt(*/ row.transaction; /*)*/
+      const transactionObject = JSON.parse(decryptedTransaction);
+      return {
+        id: row.id,
+        executed_at: row.executed_at,
+        ...transactionObject,
+      };
+    });
   } catch (error) {
     console.error('Error getting transactions', error);
     throw error; // Rethrow the error
@@ -220,8 +245,32 @@ const getAccountTransactions = logMiddleware(async (accountId, tenantId) => {
   }
 });
 
+// Dispose the database client
 async function disposeClient() {
   if (pgPool) await pgPool.end();
+}
+
+//=========================================================================================================================
+// SQS - queueing executed transactions data
+//=========================================================================================================================
+const sqsClient = new SQSClient({ region: process.env.APP_AWS_REGION });
+
+async function enqueueExecutedTransaction(messageBody) {
+  const EXECUTED_TRANSACTIONS_QUEUE_URL = process.env.EXECUTED_TRANSACTIONS_QUEUE_URL;
+  try {
+    const data = await sqsClient.send(
+      new SendMessageCommand({
+        QueueUrl: EXECUTED_TRANSACTIONS_QUEUE_URL,
+        MessageGroupId: 'Default', // Required for FIFO queues
+        MessageBody: JSON.stringify({ ...messageBody, timeStamp: new Date().toISOString() /* to prevent de-duplication in SQS */ }),
+      })
+    );
+    // console.log(`Message sent to SQS: ${data.MessageId}`);
+    return data;
+  } catch (error) {
+    console.error(`Error sending message to SQS queue ${EXECUTED_TRANSACTIONS_QUEUE_URL}:`, error);
+    throw error;
+  }
 }
 
 module.exports = {
@@ -229,7 +278,7 @@ module.exports = {
   setAccountState,
   getAllAccounts,
   getAccountsByUserId,
-  getAccountTransactions,
+  getTransactions,
   getAccountBalance,
   deposit,
   withdraw,

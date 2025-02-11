@@ -5,11 +5,10 @@ import store from './redux/store/store';
 import { AppState, IAccount } from './redux/store/types';
 import { loginWithGoogleAction, checkAuthStatusAction } from './redux/auth/actions';
 import { AuthContextProps, useAuth } from 'react-oidc-context';
-import { toggleOverviewAction, showAccountTransactionsAction, setAnalyticsTypeAction } from './redux/mnu/actions';
+import { toggleOverviewAction, setAnalyticsTypeAction } from './redux/mnu/actions';
 import { toggleNewAccountFormAction } from './redux/accounts/actions';
 import Spinner from './components/Spinner';
 import Accounts from './components/Accounts';
-import AccountTransactions from './components/AccountTransactions';
 // import AccountsAnalytics from './components/AccountsAnalytics';
 import WebSocketService from './components/WebSocketService';
 import Menu from './components/Menu';
@@ -37,8 +36,6 @@ class AppComponent extends React.Component<AppProps & { auth: AuthContextProps }
       toggleOverviewAction,
       showNewAccountForm,
       toggleNewAccountFormAction,
-      myBetsOpen,
-      showAccountTransactionsAction,
       analyticsType,
       setAnalyticsTypeAction,
       auth,
@@ -60,13 +57,6 @@ class AppComponent extends React.Component<AppProps & { auth: AuthContextProps }
               </div>
               <img src='/favicon.ico' alt='Logo' width='32' height='32' />
               <span className='build'>{appConfigData.BUILD}</span>
-              {auth.isAuthenticated && (
-                <span
-                  className={`active-page-name${isAdmin ? ' admin' : ''}`}
-                  onClick={!isAdmin ? () => showAccountTransactionsAction(!myBetsOpen) : undefined}>
-                  {myBetsOpen ? 'Account Transactions' : 'Accounts'}
-                </span>
-              )}
               {auth.isAuthenticated && !showConnections && <WebSocketService />}
             </div>
             {auth.isAuthenticated && showConnections && <WebSocketService />}
@@ -89,9 +79,7 @@ class AppComponent extends React.Component<AppProps & { auth: AuthContextProps }
         </div>
 
         {auth.isAuthenticated ? (
-          myBetsOpen ? (
-            <AccountTransactions />
-          ) : analyticsType ? (
+          analyticsType ? (
             <div className='chart-container'>
               <button onClick={() => setAnalyticsTypeAction(null)} className='action-button'>
                 <Undo2 />
@@ -159,15 +147,13 @@ interface AppProps {
   toggleOverviewAction: typeof toggleOverviewAction;
   showNewAccountForm: boolean;
   toggleNewAccountFormAction: typeof toggleNewAccountFormAction;
-  myBetsOpen: boolean;
-  showAccountTransactionsAction: typeof showAccountTransactionsAction;
+  analyticsType: string | null;
+  setAnalyticsTypeAction: typeof setAnalyticsTypeAction;
   checkAuthStatusAction: typeof checkAuthStatusAction;
   loginWithGoogleAction: typeof loginWithGoogleAction;
   showConnections: boolean;
   accounts: IAccount[];
   isAdmin: boolean | null;
-  analyticsType: string | null;
-  setAnalyticsTypeAction: typeof setAnalyticsTypeAction;
 }
 
 // Maps required state from Redux store to component props
@@ -175,11 +161,10 @@ const mapStateToProps = (state: AppState) => ({
   menuOpen: state.mnu.menuOpen,
   showOverview: state.mnu.showOverview,
   showNewAccountForm: state.accounts.showNewAccountForm,
-  isAdmin: state.auth.isAdmin,
-  showConnections: state.websockets.showConnections,
-  myBetsOpen: state.mnu.myBetsOpen,
-  accounts: state.accounts.accounts,
   analyticsType: state.mnu.analyticsType,
+  showConnections: state.websockets.showConnections,
+  accounts: state.accounts.accounts,
+  isAdmin: state.auth.isAdmin,
 });
 
 // Map Redux actions to component props
@@ -187,10 +172,9 @@ const mapDispatchToProps = (dispatch: Dispatch) =>
   bindActionCreators(
     {
       toggleOverviewAction,
-      checkAuthStatusAction,
       toggleNewAccountFormAction,
-      showAccountTransactionsAction,
       setAnalyticsTypeAction,
+      checkAuthStatusAction,
       loginWithGoogleAction,
     },
     dispatch

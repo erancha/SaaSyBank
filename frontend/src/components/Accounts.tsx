@@ -3,18 +3,19 @@ import { connect } from 'react-redux';
 import { bindActionCreators, Dispatch } from 'redux';
 import { AppState, IAccount } from '../redux/store/types';
 import {
-  broadcastCreatedRecordAction,
+  uploadCreatedRecordAction,
   setAccountViewedAction,
   setAccountStateAction,
-  broadcastAccountStateAction,
+  uploadAccountStateAction,
   toggleNewAccountFormAction,
   updateNewAccountFieldAction,
   resetNewAccountFormAction,
   setNewAccountErrorsAction,
+  setCurrentAccountAction,
 } from '../redux/accounts/actions';
-import { toggleMenuAction, showAccountTransactionsAction } from '../redux/mnu/actions';
 import { Save, Trash2, CircleX } from 'lucide-react';
 import { filterAndSortAccounts } from '../utils/utils';
+import Transactions from './Transactions';
 
 class Accounts extends React.Component<AccountsProps> {
   // Refs for form elements
@@ -22,7 +23,7 @@ class Accounts extends React.Component<AccountsProps> {
 
   // Initialize focus and visibility change listeners
   componentDidMount() {
-    // Scroll to the top (this is a workaround, to clear side affects from AccountTransactions - TODO: Handle in AccountTransactions)
+    // Scroll to the top (this is a workaround, to clear side affects from Transactions - TODO: Handle in Transactions)
     window.scrollTo(0, 0);
 
     setTimeout(() => this.newAccountInputRef.current?.focus(), 1000);
@@ -37,13 +38,12 @@ class Accounts extends React.Component<AccountsProps> {
   // Filter and sort accounts based on current criteria
   getFilteredAccounts = (): IAccount[] => {
     const { accounts } = this.props;
-
-    return filterAndSortAccounts(accounts);
+    return this.props.isAdmin ? accounts : filterAndSortAccounts(accounts, this.props.userId);
   };
 
-  // Render the complete account interface with form controls and list
+  // Render
   render() {
-    const { isAdmin, showNewAccountForm, isWsConnected } = this.props;
+    const { isAdmin, showNewAccountForm, isWsConnected, currentAccountId } = this.props;
 
     const filteredAccounts = this.getFilteredAccounts();
 
@@ -66,8 +66,9 @@ class Accounts extends React.Component<AccountsProps> {
                   key={account.account_id}
                   className={`account-row-container${account.viewed ? ' viewed' : ' unviewed'}${!account.is_disabled ? ' open' : ' closed'}${
                     isAdmin ? ' admin' : ''
-                  }`}
-                  onClick={() => this.handleAccountClick(account.account_id)}>
+                  }${account.account_id === currentAccountId ? ' current' : ''}`}
+                  onClick={() => this.handleAccountClick(account.account_id)}
+                >
                   <div className='id'>{account.account_id}</div>
                   {isAdmin && <div className='userId'>{account.user_id}</div>}
                   <div className='balance'>{account.balance}</div>
@@ -75,9 +76,10 @@ class Accounts extends React.Component<AccountsProps> {
                     {isAdmin ? (
                       <>
                         <button
-                          onClick={() => this.handleAccountStatus(account.account_id, !account.is_disabled)}
+                          onClick={() => this.handleAccountState(account.account_id, !account.is_disabled)}
                           className='action-button'
-                          title={account.is_disabled ? 'Enable' : 'Disable'}>
+                          title={account.is_disabled ? 'Enable' : 'Disable'}
+                        >
                           <CircleX />
                         </button>
                         <button onClick={() => this.handleDeleteAccount(account)} className='action-button' title='Delete'>
@@ -92,6 +94,7 @@ class Accounts extends React.Component<AccountsProps> {
               ))}
           </div>
         </div>
+        {filteredAccounts.length > 0 && <Transactions />}
       </div>
     );
   }
@@ -134,15 +137,18 @@ class Accounts extends React.Component<AccountsProps> {
     );
   };
 
-  // Process new account form submission and broadcast if valid
+  // Process new account form submission and upload if valid
   handleCreateAccount = () => {
-    const { newAccountForm, toggleNewAccountFormAction, setNewAccountErrorsAction, resetNewAccountFormAction, broadcastCreatedRecordAction } = this.props;
+    const { newAccountForm, toggleNewAccountFormAction, setNewAccountErrorsAction, resetNewAccountFormAction, uploadCreatedRecordAction } = this.props;
     const errors = this.validateForm();
 
     if (Object.keys(errors).length === 0) {
-      broadcastCreatedRecordAction({
-        account_id: newAccountForm.id,
-        balance: newAccountForm.balance,
+      uploadCreatedRecordAction({
+        type: 'account',
+        data: {
+          account_id: newAccountForm.id,
+          balance: newAccountForm.balance,
+        },
       });
       resetNewAccountFormAction();
       toggleNewAccountFormAction(false);
@@ -161,42 +167,41 @@ class Accounts extends React.Component<AccountsProps> {
     return errors;
   };
 
-  // Set a account in the redux store as viewed when clicked
+  // Handle account click
   handleAccountClick = (accountId: string) => {
-    const { setAccountViewedAction } = this.props;
-
-    if (accountId) setAccountViewedAction(accountId);
+    const { setAccountViewedAction, setCurrentAccountAction } = this.props;
+    setAccountViewedAction(accountId);
+    setCurrentAccountAction(accountId);
   };
 
-  // Set a account status in the redux store and broadcast the change
-  handleAccountStatus = (accountId: string, is_disabled: boolean) => {
-    const { setAccountStateAction, broadcastAccountStateAction } = this.props;
+  // Handle account update: backend + connected clients, and locally.
+  handleAccountState = (accountId: string, is_disabled: boolean) => {
+    const { setAccountStateAction, uploadAccountStateAction } = this.props;
 
     if (!accountId) console.error(`Invalid account id: ${accountId}`);
     else {
       const accountState = { account_id: accountId, is_disabled, is_deleted: false };
+      uploadAccountStateAction(accountState);
       setAccountStateAction(accountState);
-      broadcastAccountStateAction(accountState);
     }
   };
 
-  // Handle account deletion with confirmation and broadcast deletions
+  // Handle account deletion with confirmation: backend + connected clients, and locally.
   handleDeleteAccount = (account: IAccount) => {
-    const { setAccountStateAction, broadcastAccountStateAction } = this.props;
+    const { setAccountStateAction, uploadAccountStateAction } = this.props;
 
     if (window.confirm(`Are you sure you want to delete this ${!account.is_disabled ? 'open ' : ''}account?`)) {
       const accountState = { account_id: account.account_id, is_disabled: true, is_deleted: true };
-      broadcastAccountStateAction(accountState);
+      uploadAccountStateAction(accountState);
       setAccountStateAction(accountState);
     }
   };
 }
 
 interface AccountsProps {
-  menuOpen: boolean;
-  toggleMenuAction: typeof toggleMenuAction;
   isWsConnected: boolean;
   isAdmin: boolean | null;
+  userId: string | null;
   showNewAccountForm: boolean;
   newAccountForm: {
     id: string;
@@ -208,37 +213,38 @@ interface AccountsProps {
   resetNewAccountFormAction: typeof resetNewAccountFormAction;
   setNewAccountErrorsAction: typeof setNewAccountErrorsAction;
   accounts: IAccount[];
-  broadcastCreatedRecordAction: typeof broadcastCreatedRecordAction;
+  uploadCreatedRecordAction: typeof uploadCreatedRecordAction;
   setAccountViewedAction: typeof setAccountViewedAction;
   setAccountStateAction: typeof setAccountStateAction;
-  broadcastAccountStateAction: typeof broadcastAccountStateAction;
-  showAccountTransactionsAction: typeof showAccountTransactionsAction;
+  uploadAccountStateAction: typeof uploadAccountStateAction;
+  setCurrentAccountAction: typeof setCurrentAccountAction;
+  currentAccountId: string | null;
 }
 
 // Maps required state from Redux store to component props
 const mapStateToProps = (state: AppState) => ({
   isAdmin: state.auth.isAdmin,
+  userId: state.auth.userId,
   isWsConnected: state.websockets.isConnected,
   showNewAccountForm: state.accounts.showNewAccountForm,
   accounts: state.accounts.accounts,
   newAccountForm: state.accounts.newAccountForm,
-  menuOpen: state.mnu.menuOpen,
+  currentAccountId: state.accounts.currentAccountId,
 });
 
 // Map Redux actions to component props
 const mapDispatchToProps = (dispatch: Dispatch) =>
   bindActionCreators(
     {
-      toggleMenuAction,
       toggleNewAccountFormAction,
       updateNewAccountFieldAction,
       resetNewAccountFormAction,
       setNewAccountErrorsAction,
-      broadcastCreatedRecordAction,
+      uploadCreatedRecordAction,
       setAccountViewedAction,
       setAccountStateAction,
-      broadcastAccountStateAction,
-      showAccountTransactionsAction,
+      uploadAccountStateAction,
+      setCurrentAccountAction,
     },
     dispatch
   );

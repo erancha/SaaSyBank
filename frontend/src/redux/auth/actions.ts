@@ -5,11 +5,11 @@ import appConfigData from '../../appConfig.json';
 export const SET_AUTH_LOGIN_SUCCESS = 'SET_AUTH_LOGIN_SUCCESS';
 export interface ISetAuthLoginSuccessAction {
   type: typeof SET_AUTH_LOGIN_SUCCESS;
-  payload: { JWT: string; userId: string; userName: string };
+  payload: { JWT: string; userId: string; username: string };
 }
-const setAuthLoginSuccessAction = (JWT: string, userId: string, userName: string): ISetAuthLoginSuccessAction => ({
+const setAuthLoginSuccessAction = (JWT: string, userId: string, username: string): ISetAuthLoginSuccessAction => ({
   type: SET_AUTH_LOGIN_SUCCESS,
-  payload: { JWT, userId, userName },
+  payload: { JWT, userId, username },
 });
 
 export const SET_IS_ADMIN = 'SET_IS_ADMIN';

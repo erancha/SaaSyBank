@@ -4,11 +4,7 @@ const initialState: AppState = {
   mnu: {
     showOverview: false,
     menuOpen: false,
-    showAuthentication: true,
-    anchorElCategories: null,
-    anchorElClosedAccounts: null,
     anchorEl: null,
-    myBetsOpen: false,
     analyticsType: null,
   },
   auth: {
@@ -16,7 +12,7 @@ const initialState: AppState = {
     isAdmin: false,
     JWT: null,
     userId: null,
-    userName: null,
+    username: null,
   },
   websockets: {
     isConnected: false,
@@ -27,10 +23,12 @@ const initialState: AppState = {
     lastConnectionsTimestampISO: '',
   },
   accounts: {
-    showNewAccountForm: false,
     accounts: [],
-    recordToBroadcast: null,
-    stateToBroadcast: null,
+    currentAccountId: null,
+    showNewAccountForm: false,
+    newRecordToUpload: null,
+    stateToUpload: null,
+    // accountIdToDelete: null,
     newAccountForm: {
       id: '',
       balance: 0,
@@ -40,6 +38,7 @@ const initialState: AppState = {
   transactions: {
     transactions: [],
     analyticsData: [],
+    newRecordToUpload: null,
   },
 };
 

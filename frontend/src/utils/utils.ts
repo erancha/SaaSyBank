@@ -1,7 +1,7 @@
-import { IAccount, ITransaction } from '../redux/store/types';
+import { IAccount } from '../redux/store/types';
 
-export const filterAndSortAccounts = (accounts: IAccount[]) => {
-  return accounts;
+export const filterAndSortAccounts = (accounts: IAccount[] , userId: string | null /*, searchTerm: string*/) => {
+  return accounts.filter((account) => account.user_id === userId);
 };
 
 export const timeShortDisplay = (dateTime: Date) => {

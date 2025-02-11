@@ -42,16 +42,6 @@ body {
     grid-column: span 2;
   }
 
-  > .active-page-name {
-    font-size: 1.2rem;
-    font-weight: 600;
-    cursor: pointer;
-
-    &.admin {
-      cursor: initial;
-    }
-  }
-
   > .network-container {
     scale: 0.8;
     margin: 0;
@@ -384,7 +374,7 @@ body {
 .transactions-list-header,
 .transaction-row-container {
   display: grid;
-  grid-template-columns: 2fr 3fr 3fr 4fr 5fr 5fr minmax(80px, 2fr) 1fr minmax(60px, 1fr);
+  grid-template-columns: 3fr 3fr 2fr 5fr minmax(60px, 2fr);
   border-radius: 0.5rem;
 }
 .transactions-list-header {
@@ -392,6 +382,7 @@ body {
   padding: 10px;
   border-radius: 8px;
   font-weight: bold;
+  text-align: center;
 }
 
 .transactions-list-header > div {
@@ -478,18 +469,6 @@ body {
   > .actions {
     justify-self: center;
   }
-
-  .category-container {
-    display: flex;
-    flex-direction: column;
-    cursor: pointer;
-
-    .current {
-      font-size: 0.6rem;
-      color: gray;
-      text-decoration: underline;
-    }
-  }
 }
 
 .account-row-container {
@@ -497,31 +476,6 @@ body {
   padding: 5px;
   color: darkblue;
   font-weight: 500;
-
-  > .bet-amount-container {
-    > .bet-dropdown > select {
-      width: 100%;
-      height: 100%;
-      border-radius: 0.5rem;
-      border: 2px solid darkblue;
-    }
-
-    &.bet-selected {
-      border: 2px solid darkgray;
-
-      > .bet-dropdown > select {
-        border-width: 0;
-        margin-bottom: 0.5rem;
-      }
-      > .input-and-error-container {
-        > input {
-          border: 1px solid darkblue;
-          border-radius: 0.5rem;
-          padding: 3px;
-        }
-      }
-    }
-  }
 }
 
 .account-row-container > div {
@@ -557,17 +511,10 @@ body {
 }
 
 .account-row-container.closed,
-.account-row-container > .bet-dropdown.closed > select,
 .transaction-row-container.closed {
-  pointer-events: none; /* Prevents any mouse interaction */
+  /* pointer-events: none; Prevents any mouse interaction */
+  cursor: not-allowed;
   opacity: 0.3; /* Makes it look disabled */
-
-  &.won {
-    background-color: lightgreen;
-  }
-  &.lost {
-    background-color: lightsalmon;
-  }
 }
 .account-row-container.closed > *,
 .transaction-row-container.closed > * {
@@ -580,6 +527,11 @@ body {
   .actions.flashing {
     animation: pulsate-brightness 0.7s ease-in-out 3;
   }
+}
+
+.account-row-container.current {
+  background-color: #e3f2fd;
+  border-left: 4px solid #1976d2;
 }
 
 .account-row-container .actions {
@@ -679,64 +631,23 @@ body {
 
   &.closed {
     border-color: red;
-
-    &.won {
-      border-color: green;
-    }
   }
 }
 
-.transaction-row-container > div {
+.transaction-row-container > div,
+.transaction-row-container > div > input,
+.transaction-row-container > div > select {
   padding: 5px;
   border-radius: 10px;
   background-color: white;
   font-size: 0.8rem;
   transition: background-color 0.2s ease;
-
-  &.dueDate > .flashing {
-    font-size: 10px;
-    color: darkred;
-    animation: pulsate-brightness 2s ease-in-out infinite;
-    &.fast {
-      animation-duration: 1.2s;
-    }
-    &.faster {
-      animation-duration: 0.6s;
-    }
-    &.fastest {
-      animation-duration: 0.3s;
-      background-color: yellow;
-    }
-  }
 }
 
 .transaction-row-container > div > p {
   margin: 2px;
   background-color: white;
   font-size: 0.8rem;
-}
-
-.transaction-row-container .title p,
-.transaction-row-container .description p {
-  word-wrap: break-word;
-}
-
-.transaction-row-container .status {
-  font-weight: bold;
-}
-
-.transaction-row-container.closed .status {
-  color: red;
-}
-.transaction-row-container.closed.won .amount,
-.transaction-row-container.closed.won .odds,
-.transaction-row-container.closed.won .status {
-  color: darkgreen;
-  font-weight: 500;
-}
-
-.transaction-row-container.open .status {
-  color: green;
 }
 
 .chart-container {
