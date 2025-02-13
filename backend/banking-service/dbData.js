@@ -67,10 +67,10 @@ const setAccountState = logMiddleware(async (accountId, is_disabled, tenantId) =
     const result = await pgClient.query(
       `
       UPDATE accounts 
-      SET is_disabled = $3, updated_at = NOW() 
-      WHERE account_id = $1 AND tenant_id = $2 
+      SET is_disabled = $2, updated_at = NOW() 
+      WHERE account_id = $1 AND tenant_id = $3 
       RETURNING *`,
-      [accountId, tenantId, is_disabled]
+      [accountId, is_disabled, tenantId]
     );
     return result.rows[0]; // Return the updated account details
   } catch (error) {

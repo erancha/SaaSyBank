@@ -243,35 +243,35 @@ Resources:
           ToPort: !Ref ECSContainerPort # Port your container listens on, e.g., 8080
           SourceSecurityGroupId: !Ref MyALBSG
       SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 6379 # redis
+        - IpProtocol: tcp # to redis
+          FromPort: 6379
           ToPort: 6379
           CidrIp: 0.0.0.0/0
-        # - IpProtocol: tcp
-        #   FromPort: 443 # DDB and SQS
-        #   ToPort: 443
-        #   CidrIp: 0.0.0.0/0
+        - IpProtocol: 'tcp' # to ECR
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-ECS-SG'
 
-  MyECSServicesEgressRule:
-    Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ECS to Allow Traffic to ECR
-    Properties:
-      GroupId: !Ref MyECSServicesSG
-      IpProtocol: 'tcp'
-      FromPort: 443
-      ToPort: 443
-      CidrIp: 0.0.0.0/0
-
   MyALBEgressRule:
-    Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ALB to Allow Traffic to ECS Services.
+    Type: AWS::EC2::SecurityGroupEgress # MyALBSG to MyECSServicesSG.
     Properties:
       GroupId: !Ref MyALBSG
       IpProtocol: tcp
       FromPort: !Ref ECSContainerPort
       ToPort: !Ref ECSContainerPort
       DestinationSecurityGroupId: !Ref MyECSServicesSG
+
+  MyRDSBasedFunctionSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RDS Based Function
+      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-RDSBasedFunction-SG'
 
   MyRDSSG:
     Type: AWS::EC2::SecurityGroup
@@ -290,15 +290,24 @@ Resources:
           FromPort: 5432
           ToPort: 5432
           SourceSecurityGroupId: !Ref MyRDSBasedFunctionSG
-        # - IpProtocol: tcp
+        # - IpProtocol: tcp # TODO: Bastion host
         #   FromPort: 5432
         #   ToPort: 5432
         #   CidrIp: 149.106.249.221/32
 
-  MyECSEgressRule:
-    Type: AWS::EC2::SecurityGroupEgress # Egress Rule for ECS to Allow Traffic to RDS
+  MyECSServicesEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress # MyECSServicesSG to MyRDSSG
     Properties:
       GroupId: !Ref MyECSServicesSG
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      DestinationSecurityGroupId: !Ref MyRDSSG
+
+  MyRDSBasedFunctionEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress # MyRDSBasedFunctionSG to MyRDSSG.
+    Properties:
+      GroupId: !Ref MyRDSBasedFunctionSG
       IpProtocol: tcp
       FromPort: 5432
       ToPort: 5432
@@ -968,25 +977,6 @@ Resources:
                   - rds:DescribeDBInstances
                   - rds:Connect
                 Resource: '*'
-
-  MyRDSBasedFunctionSG:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for RDS Based Function
-      VpcId: !If [CreateVpc, !Ref MyVPC, !Ref ExistingVpcId]
-      # SecurityGroupIngress:
-      SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          DestinationSecurityGroupId: !Ref MyRDSSG
-      #   - IpProtocol: tcp
-      #     FromPort: 6379 # redis
-      #     ToPort: 6379
-      #     CidrIp: 0.0.0.0/0
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-RDSBasedFunction-SG'
 
   # ------------------------------------------------------------------------------
   # S3 web site and cloudfront

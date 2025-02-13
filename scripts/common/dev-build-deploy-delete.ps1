@@ -46,12 +46,21 @@ if ($deleteStack) {
 
     aws cloudformation delete-stack --stack-name $commonConstants.stackName --region $commonConstants.region
     aws cloudformation wait stack-delete-complete --stack-name $commonConstants.stackName --region $commonConstants.region
-}
 
-# ./util/list-all-non-default-resources.ps1 -region $commonConstants.region | Select-String -Pattern "$($commonConstants.stackName)-|$($commonConstants.stackNameMain)-"
+    $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
+    Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Deleting log groups for stack '$($commonConstants.stackName)' ..."
+    Push-Location util
+    $logGroupsPrefix = "/aws/lambda/$($commonConstants.stackName)"
+    ./manage-log-groups.ps1 -deleteLogGroups $logGroupsPrefix
+    ./manage-log-groups.ps1 -deleteLogStreams $logGroupsPrefix
+    ./list-all-non-default-resources.ps1 -region $commonConstants.region | Select-String -Pattern "$($commonConstants.stackName)-|$($commonConstants.stackNameMain)-"
+    Pop-Location
+}
 
 if ($deployFrontend) {
     ./deploy-frontend-distribution.ps1
+} elseif (-not $deleteStack) {
+    ./update-app-config-dev.ps1
 }
 
 $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime

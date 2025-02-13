@@ -44,12 +44,20 @@ const onWebsocketConnect = async (socket, request) => {
   try {
     const isAdmin = currentUserId === process.env.ADMIN_USER_ID;
     const response = {
-      ...(await handleRead({ commandParams: { accounts: { all: true /*isAdmin*/ }, transactions: {/*TODO*/} }, connectedUserId: currentUserId })),
+      ...(await handleRead({
+        commandParams: {
+          accounts: { all: true /*isAdmin*/ },
+          transactions: {
+            /*TODO*/
+          },
+        },
+        connectedUserId: currentUserId,
+      })),
       ...(isAdmin ? { isAdmin } : {}),
     };
     writeResponse({ response, responseSocket: socket });
   } catch (error) {
-    socket.send(JSON.stringify({ message: 'Failed to fetch accounts:', error }));
+    socket.send(JSON.stringify({ message: 'Failed to read data for a new client:', error }));
   }
 
   // Websocket event handlers

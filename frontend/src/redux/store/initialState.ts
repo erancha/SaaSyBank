@@ -22,13 +22,16 @@ const initialState: AppState = {
     lastConnectionsTimestamp: '',
     lastConnectionsTimestampISO: '',
   },
+  crud: {
+    createCommand: null,
+    readCommand: null,
+    updateCommand: null,
+    deleteCommand: null,
+  },
   accounts: {
     accounts: [],
     currentAccountId: null,
     showNewAccountForm: false,
-    newRecordToUpload: null,
-    stateToUpload: null,
-    // accountIdToDelete: null,
     newAccountForm: {
       id: '',
       balance: 0,
@@ -38,7 +41,6 @@ const initialState: AppState = {
   transactions: {
     transactions: [],
     analyticsData: [],
-    newRecordToUpload: null,
   },
 };
 

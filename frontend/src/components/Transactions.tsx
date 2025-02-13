@@ -3,8 +3,7 @@ import { connect } from 'react-redux';
 import { AppState, ITransaction, IAccount, BankingFunctionType } from '../redux/store/types';
 import { timeShortDisplay, getAccount } from '../utils/utils';
 import { setWSConnectedAction } from 'redux/websockets/actions';
-import { uploadCreatedRecordAction } from '../redux/accounts/actions';
-import { addTransactionAction } from '../redux/transactions/actions';
+import { prepareCreateTransactionCommandAction, addTransactionAction } from '../redux/transactions/actions';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -62,7 +61,7 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
   handleExecuteTransaction = (transaction: ITransaction) => {
     if (transaction.bankingFunction === BankingFunctionType.Transfer) this.props.addTransactionAction(transaction); // Add the transaction to the source account, locally - the target account will receive a notification from the backend.
     // TODO: Refer to the comment '// TODO: notify this.props.userId as well' in WebSocketService.tsx - when the backend will notify the source account after the transaction is confirmed, the current addition will become unnecessary.
-    this.props.uploadCreatedRecordAction({ type: 'transaction', data: { ...transaction, bankingFunction: transaction.bankingFunction.toLowerCase() } });
+    this.props.prepareCreateTransactionCommandAction({ ...transaction, bankingFunction: transaction.bankingFunction.toLowerCase() });
   };
 
   // Handler for cancelling the changes made to a transaction
@@ -127,10 +126,10 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
                   // Handle empty input as 0, otherwise parse the number
                   const newValue = e.target.value === '' ? 0 : parseFloat(e.target.value);
                   // Set max amount based on transaction type - limit withdrawals/transfers to account balance
-                  const maxAmount = transaction.bankingFunction === BankingFunctionType.Withdraw ||
-                    transaction.bankingFunction === BankingFunctionType.Transfer
-                    ? this.props.currentAccount?.balance || 0
-                    : Number.MAX_SAFE_INTEGER;
+                  const maxAmount =
+                    transaction.bankingFunction === BankingFunctionType.Withdraw || transaction.bankingFunction === BankingFunctionType.Transfer
+                      ? this.props.currentAccount?.balance || 0
+                      : Number.MAX_SAFE_INTEGER;
 
                   // Ignore invalid numbers, negative values, and amounts exceeding balance
                   if (isNaN(newValue) || newValue < 0 || newValue > maxAmount) {
@@ -140,11 +139,13 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
                 }
               }}
               // Browser-level validation for min/max amount
-              min="0"
-              max={transaction.bankingFunction === BankingFunctionType.Withdraw ||
-                transaction.bankingFunction === BankingFunctionType.Transfer
-                ? this.props.currentAccount?.balance
-                : undefined}
+              min='0'
+              max={
+                transaction.bankingFunction === BankingFunctionType.Withdraw || transaction.bankingFunction === BankingFunctionType.Transfer
+                  ? this.props.currentAccount?.balance
+                  : undefined
+              }
+              step='100'
               readOnly={isExecuted}
             />
           )}
@@ -156,7 +157,8 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
             <select
               value={transaction.bankingFunction}
               onChange={(e) => (!isExecuted ? this.handleEmptyTransactionChange('bankingFunction' as TransactionField, e.target.value) : undefined)}
-              disabled={isExecuted}>
+              disabled={isExecuted}
+            >
               {functionOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
@@ -169,14 +171,14 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
           {isExecuted
             ? transaction.toAccountId
             : transaction.bankingFunction === BankingFunctionType.Transfer && (
-              <input
-                type='text'
-                value={transaction.toAccountId}
-                onChange={(e) => (!isExecuted ? this.handleEmptyTransactionChange('toAccountId' as TransactionField, e.target.value) : undefined)}
-                readOnly={isExecuted}
-                placeholder={'Enter target account'}
-              />
-            )}
+                <input
+                  type='text'
+                  value={transaction.toAccountId}
+                  onChange={(e) => (!isExecuted ? this.handleEmptyTransactionChange('toAccountId' as TransactionField, e.target.value) : undefined)}
+                  readOnly={isExecuted}
+                  placeholder={'Enter target account'}
+                />
+              )}
         </div>
         <div className='actions'>
           {!isExecuted && (
@@ -206,7 +208,7 @@ interface AccountTransactionsProps {
   accounts: IAccount[];
   currentAccount: IAccount | undefined;
   setWSConnectedAction: typeof setWSConnectedAction;
-  uploadCreatedRecordAction: typeof uploadCreatedRecordAction;
+  prepareCreateTransactionCommandAction: typeof prepareCreateTransactionCommandAction;
   addTransactionAction: typeof addTransactionAction;
 }
 
@@ -220,7 +222,7 @@ const mapStateToProps = (state: AppState) => ({
 // Map Redux actions to component props
 const mapDispatchToProps = {
   setWSConnectedAction,
-  uploadCreatedRecordAction,
+  prepareCreateTransactionCommandAction,
   addTransactionAction,
 };
 

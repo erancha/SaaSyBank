@@ -1,6 +1,6 @@
 param (
-    [bool]$deleteLogGroups = $false,
-    [string]$deleteLogStreams = ""
+    [string]$deleteLogGroupsPrefix = "",
+    [string]$deleteLogStreamsPrefix = ""
 )
 
 . ./get-ElapsedTimeFormatted.ps1
@@ -15,15 +15,16 @@ Write-Host "`n$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : $s
 $logGroups = aws logs --region $commonConstants.region describe-log-groups --query 'logGroups[*].logGroupName' --output text | Out-String | ForEach-Object { $_.Trim() }
 $logGroupsArray = $logGroups -split '\s+' | Where-Object { $_ -ne '' }
 
-if ($deleteLogGroups) {
-    foreach ($logGroup in $logGroupsArray) {
+if ($deleteLogGroupsPrefix -ne "") {
+    $filteredLogGroups = $logGroupsArray | Where-Object { $_.StartsWith($deleteLogGroupsPrefix) }
+    foreach ($logGroup in $filteredLogGroups) {
         Write-Host "Deleting log group: $logGroup"
         aws logs --region $commonConstants.region delete-log-group --log-group-name $logGroup | Out-Null
     }
 }
-elseif ($deleteLogStreams -ne "") {
+elseif ($deleteLogStreamsPrefix -ne "") {
     # Filter log groups that start with the specified prefix
-    $filteredLogGroups = $logGroupsArray | Where-Object { $_.StartsWith($deleteLogStreams) }
+    $filteredLogGroups = $logGroupsArray | Where-Object { $_.StartsWith($deleteLogStreamsPrefix) }
     
     foreach ($logGroup in $filteredLogGroups) {
         try {
@@ -62,7 +63,7 @@ elseif ($deleteLogStreams -ne "") {
             } while ($nextToken)
 
             $formattedElapsedTime = Get-ElapsedTimeFormatted -startTime $startTime
-            Write-Host "$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Completed $logGroup.`n"
+            Write-Host "$(Get-Date -Format 'HH:mm:ss'), elapsed $formattedElapsedTime : Completed processing $logGroup.`n"
         }
         catch {
             Write-Warning "Error processing log group $logGroup : $_"

@@ -2,6 +2,8 @@
 // Root State
 //=================
 
+import { CrudState } from 'redux/crud/types';
+
 /**
  * The root state type that combines all feature states.
  * Used for type-safe access to the Redux store.
@@ -10,6 +12,7 @@ export interface AppState {
   mnu: MnuState;
   auth: AuthState;
   websockets: WebsocketsState;
+  crud: CrudState;
   accounts: AccountsState;
   transactions: TransactionsState;
 }
@@ -50,16 +53,10 @@ export interface WebsocketsState {
 //===============
 // Accounts
 //===============
-/**
- * Defines the shape of the accounts state in Redux.
- * Extends IUploadState to support sending new accounts to the backend.
- */
-export interface AccountsState extends IUploadState {
-  showNewAccountForm: boolean;
+export interface AccountsState {
   accounts: IAccount[];
   currentAccountId: string | null;
-  stateToUpload: IAccountState | null; // when this state changes, the new value should be uploaded
-  // accountIdToDelete: IAccount | null;
+  showNewAccountForm: boolean;
   newAccountForm: {
     id: string;
     balance: number;
@@ -78,28 +75,18 @@ export interface IAccount extends INewAccount {
   user_id: string;
 }
 
-export interface IAccountState {
-  account_id: string;
-  is_disabled: boolean;
-  is_deleted: boolean;
-}
-
 //==============
 // Transactions
 //==============
-/**
- * Defines the shape of the transactions state in Redux.
- * Extends IUploadState to support sending new transactions to the backend.
- */
-export interface TransactionsState extends IUploadState {
+export interface TransactionsState {
   transactions: ITransaction[];
-  analyticsData: IAccountsAnalyticsDataItem[];
+  analyticsData: any[];
 }
 
 export enum BankingFunctionType {
   Deposit = 'deposit',
   Withdraw = 'withdraw',
-  Transfer = 'transfer'
+  Transfer = 'transfer',
 }
 
 /**
@@ -120,32 +107,6 @@ export interface INewTransaction {
  */
 export interface ITransaction extends INewTransaction {
   executed_at: string; // Timestamp when the transaction was executed
-}
-
-/**
- * Defines the structure of a message that will be sent to the backend.
- * This is like an envelope containing:
- * - A label (type) indicating what kind of record it is
- * - The actual content (data) to be sent
- *
- * Used by WebSocketService to standardize how different types of records
- * are sent to the backend.
- */
-export interface IUploadPayload {
-  type: 'account' | 'transaction'; // Discriminator to identify the record type
-  data: INewAccount | INewTransaction; // The actual record data to be sent
-}
-
-/**
- * Defines how pending upload state is stored in Redux.
- * Components that need to send data to the backend will extend this interface
- * to include the newRecordToUpload field in their state.
- *
- * Think of this as an outbox that holds a record until WebSocketService picks it up
- * and sends it to the backend.
- */
-export interface IUploadState {
-  newRecordToUpload: IUploadPayload | null; // Current record waiting to be sent, null if nothing to send
 }
 
 export interface IConnectionAndUsername {

@@ -1,11 +1,26 @@
 import React from 'react';
 import { connect } from 'react-redux';
 import { bindActionCreators, Dispatch } from 'redux';
-import { AppState, IConnectionAndUsername, IAccount, IUploadPayload, IAccountState, INewTransaction, BankingFunctionType } from 'redux/store/types';
+import {
+  AppState,
+  IAccount,
+  INewTransaction,
+  BankingFunctionType,
+  IConnectionAndUsername,
+} from '../redux/store/types';
+import {
+  ICreateCommand,
+  IReadCommand,
+  IUpdateCommand,
+  IDeleteCommand,
+} from '../redux/crud/types';
+import { IUpdateAccountParams } from '../redux/accounts/types';
+import { IReadTransactionParams } from '../redux/transactions/types';
+import { IReadAnalyticsParams } from '../redux/analytics/types';
 import { setAnalyticsTypeAction } from '../redux/mnu/actions';
 import { setIsAdminAction } from '../redux/auth/actions';
 import { setWSConnectedAction, setAppVisibleAction, setConnectionsAndUsernamesAction, toggleConnectionsAction } from '../redux/websockets/actions';
-import { setAccountsAction, addAccountAction, setAccountStateAction, setCurrentAccountAction } from '../redux/accounts/actions';
+import { addAccountAction, setAccountsAction, setCurrentAccountAction, setAccountStateAction, deleteAccountAction } from '../redux/accounts/actions';
 import { setTransactionsAction } from '../redux/transactions/actions';
 import appConfigData from '../appConfig.json';
 import { Network } from 'lucide-react';
@@ -44,7 +59,7 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
   };
 
   componentDidUpdate(prevProps: WebSocketProps) {
-    const { isWsConnected, JWT, isAppVisible, analyticsType, setAnalyticsTypeAction } = this.props;
+    const { isWsConnected, JWT, isAppVisible, analyticsType } = this.props;
     const { previousAnalyticsType } = this.state;
 
     // console.log(
@@ -59,11 +74,11 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
       this.connect();
 
       // When reconnecting, set the analytics type to the previous one if it exists
-      if (previousAnalyticsType) setTimeout(() => setAnalyticsTypeAction(previousAnalyticsType), 5000); //TODO: Look into this again - without setTimeout the client opens several connections !
+      if (previousAnalyticsType) setTimeout(() => this.props.setAnalyticsTypeAction(previousAnalyticsType), 5000); //TODO: Look into this again - without setTimeout the client opens several connections !
     } else if (!isAppVisible && prevProps.isAppVisible) {
       this.setState({ previousAnalyticsType: analyticsType });
       // Store the current analytics type before disconnecting
-      if (analyticsType) setAnalyticsTypeAction(null); // to trigger a refresh on reconnection.
+      if (analyticsType) this.props.setAnalyticsTypeAction(null); // to trigger a refresh on reconnection.
 
       // console.log('--> this.disconnect()');
       this.disconnect();
@@ -74,7 +89,7 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
 
   // Compare the current props with the previous props, and upload to the backend via the websocket when applicable.
   private compareAndUpload(prevProps: WebSocketProps) {
-    const { newRecordToUpload, accountStateToUpload, analyticsType } = this.props;
+    const { createCommand, readCommand, updateCommand, deleteCommand } = this.props;
 
     const upload = (data: any) => {
       try {
@@ -86,52 +101,78 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
 
     // CRUD: Commands to Create data:
     //-----------------------------------------
-
-    // Handle new record uploads (accounts, transactions)
-    if (newRecordToUpload && newRecordToUpload !== prevProps.newRecordToUpload) {
-      switch (newRecordToUpload.type) {
+    if (createCommand && createCommand !== prevProps.createCommand) {
+      switch (createCommand.type) {
         case 'account':
-          upload({ command: { type: 'create', params: { account: newRecordToUpload.data } } });
+          upload({ command: { type: 'create', params: { account: createCommand.params } } });
           break;
         case 'transaction':
-          const transaction = newRecordToUpload.data as INewTransaction;
+          const transaction = createCommand.params as INewTransaction;
           const toAccountId = transaction.bankingFunction === BankingFunctionType.Transfer ? transaction.toAccountId : transaction.accountId;
           const toUserId = getAccount(this.props.accounts, toAccountId)?.user_id;
-          upload({ command: { type: 'create', params: { transaction: newRecordToUpload.data }, to: toUserId } }); // TODO: notify this.props.userId as well
+          upload({ command: { type: 'create', params: { transaction: createCommand.params }, to: toUserId } }); // TODO: notify this.props.userId as well
           break;
       }
     }
 
     // CRUD: Commands to Read data:
     //-----------------------------------------
-
-    // read data for a report:
-    if (analyticsType && analyticsType !== prevProps.analyticsType) {
-      upload({ command: { type: 'read', params: { analyticsType } } });
+    if (readCommand && readCommand !== prevProps.readCommand) {
+      switch (readCommand.type) {
+        case 'transaction':
+          const transactionParams = readCommand.params as IReadTransactionParams;
+          upload({ command: { type: 'read', params: { transactions: { accountId: transactionParams.accountId } } } });
+          break;
+        case 'analytics':
+          const analyticsParams = readCommand.params as IReadAnalyticsParams;
+          upload({ command: { type: 'read', params: { analyticsType: analyticsParams.analyticsType } } });
+          break;
+      }
     }
 
-    // CRUD: Commands to Update or Delete data:
+    // CRUD: Commands to Update data:
     //-----------------------------------------
+    if (updateCommand && updateCommand !== prevProps.updateCommand) {
+      switch (updateCommand.type) {
+        case 'account': {
+          const updateAccountParams = updateCommand.params as IUpdateAccountParams;
+          const account = this.props.accounts.find((acc) => acc.account_id === updateAccountParams.account_id);
+          upload({
+            command: {
+              type: 'update',
+              params: { account: updateAccountParams },
+              to: account?.user_id,
+            },
+          });
+          break;
+        }
+        default: {
+          console.warn(`Unknown update command type: ${updateCommand.type}`);
+          break;
+        }
+      }
+    }
 
-    // Handle account state uploads (enable/disable/delete)
-    if (accountStateToUpload && accountStateToUpload !== prevProps.accountStateToUpload) {
-      const account = this.props.accounts.find((acc) => acc.account_id === accountStateToUpload.account_id);
-      if (!accountStateToUpload.is_deleted) {
-        upload({
-          command: {
-            type: 'update',
-            params: { account: accountStateToUpload },
-            to: account?.user_id,
-          },
-        });
-      } else {
-        upload({
-          command: {
-            type: 'delete',
-            params: { account: { account_id: accountStateToUpload.account_id } },
-            to: account?.user_id,
-          },
-        });
+    // CRUD: Commands to Delete data:
+    //-----------------------------------------
+    if (deleteCommand && deleteCommand !== prevProps.deleteCommand) {
+      switch (deleteCommand.type) {
+        case 'account': {
+          const account_id = deleteCommand.params.account_id;
+          const account = this.props.accounts.find((acc) => acc.account_id === account_id);
+          upload({
+            command: {
+              type: 'delete',
+              params: { account: { account_id } },
+              to: account?.user_id,
+            },
+          });
+          break;
+        }
+        default: {
+          console.warn(`Unknown delete command type: ${deleteCommand.type}`);
+          break;
+        }
       }
     }
   }
@@ -142,13 +183,13 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
 
   // Component's rendering function:
   render() {
-    const { isWsConnected, showConnections, lastConnectionsTimestamp, connectionsAndUsernames, toggleConnectionsAction } = this.props;
+    const { isWsConnected, showConnections, connectionsAndUsernames, lastConnectionsTimestamp } = this.props;
 
     return (
       <div
         className='network-container'
         title={isWsConnected ? `Connected, last connections update on ${lastConnectionsTimestamp}` : 'Disconnected'}
-        onClick={() => toggleConnectionsAction(!showConnections)}
+        onClick={() => this.props.toggleConnectionsAction(!showConnections)}
       >
         <div className='left-column'>
           <Network size={20} className={`network-icon ${isWsConnected ? 'connected' : 'disconnected'}`} />
@@ -310,11 +351,7 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
   // CRUD: event containing Deleted data
   private handleDataDeleted(dataDeleted: any) {
     if (dataDeleted.account) {
-      this.props.setAccountStateAction({
-        account_id: dataDeleted.account.account_id,
-        is_deleted: true,
-        is_disabled: true,
-      });
+      this.props.deleteAccountAction(dataDeleted.account.account_id);
       toast(`Account ${dataDeleted.account.account_id} was deleted.`);
     }
   }
@@ -331,6 +368,7 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
 interface WebSocketProps {
   JWT: string | null;
   isAdmin: boolean | null;
+  setIsAdminAction: typeof setIsAdminAction;
   userId: string | null;
   isWsConnected: boolean;
   setWSConnectedAction: typeof setWSConnectedAction;
@@ -342,17 +380,22 @@ interface WebSocketProps {
   toggleConnectionsAction: typeof toggleConnectionsAction;
   lastConnectionsTimestamp: string;
   lastConnectionsTimestampISO: string;
-  newRecordToUpload: IUploadPayload | null;
-  accountStateToUpload: IAccountState | null;
+  addAccountAction: typeof addAccountAction;
+  createCommand: ICreateCommand | null;
+  readCommand: IReadCommand | null;
+  updateCommand: IUpdateCommand | null;
+  deleteCommand: IDeleteCommand | null;
   accounts: IAccount[];
   setAccountsAction: typeof setAccountsAction;
+  setCurrentAccountAction: typeof setCurrentAccountAction;
+  setAccountStateAction: typeof setAccountStateAction;
+
+  deleteAccountAction: typeof deleteAccountAction;
+
   setTransactionsAction: typeof setTransactionsAction;
   analyticsType: string | null;
-  setAccountStateAction: typeof setAccountStateAction;
-  addAccountAction: typeof addAccountAction;
-  setCurrentAccountAction: typeof setCurrentAccountAction;
-  setIsAdminAction: typeof setIsAdminAction;
   setAnalyticsTypeAction: typeof setAnalyticsTypeAction;
+  currentAccountId: string | null;
 }
 
 interface WebSocketState {
@@ -370,10 +413,13 @@ const mapStateToProps = (state: AppState) => ({
   showConnections: state.websockets.showConnections,
   lastConnectionsTimestamp: state.websockets.lastConnectionsTimestamp,
   lastConnectionsTimestampISO: state.websockets.lastConnectionsTimestampISO,
-  analyticsType: state.mnu.analyticsType,
-  newRecordToUpload: state.accounts.newRecordToUpload,
-  accountStateToUpload: state.accounts.stateToUpload,
+  createCommand: state.crud.createCommand,
+  readCommand: state.crud.readCommand,
+  updateCommand: state.crud.updateCommand,
+  deleteCommand: state.crud.deleteCommand,
   accounts: state.accounts.accounts,
+  currentAccountId: state.accounts.currentAccountId,
+  analyticsType: state.mnu.analyticsType, // TODO
 });
 
 // Map Redux actions to component props
@@ -391,6 +437,7 @@ const mapDispatchToProps = (dispatch: Dispatch) =>
       setTransactionsAction,
       setIsAdminAction,
       setAnalyticsTypeAction,
+      deleteAccountAction,
     },
     dispatch
   );

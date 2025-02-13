@@ -42,12 +42,14 @@ exports.handler = async (event) => {
           if (bankingFunction !== 'transfer') {
             const { accountId } = JSON.parse(record.body);
             if (!accountId) console.error('Invalid record: accountId not found!', record.body);
-            else
+            else {
               await dbClient.query('INSERT INTO accountTransactions (tenant_id,account_id,transaction,executed_at) VALUES ($1,$2,$3,NOW()) RETURNING *', [
                 tenantId,
                 accountId,
                 encryptedTransactionData,
               ]);
+              console.log(`Inserted record: ${tenantId} ${accountId} ${encryptedTransactionData}`);
+            }
           } else {
             const { fromAccountId, toAccountId } = JSON.parse(record.body);
             if (!fromAccountId || !toAccountId) console.error('Invalid record: fromAccountId or toAccountId not found!', record.body);
@@ -57,11 +59,13 @@ exports.handler = async (event) => {
                 fromAccountId,
                 encryptedTransactionData,
               ]);
+              console.log(`Inserted record: ${tenantId} ${fromAccountId} ${encryptedTransactionData}`);
               await dbClient.query('INSERT INTO accountTransactions (tenant_id,account_id,transaction,executed_at) VALUES ($1,$2,$3,NOW()) RETURNING *', [
                 tenantId,
                 toAccountId,
                 encryptedTransactionData,
               ]);
+              console.log(`Inserted record: ${tenantId} ${toAccountId} ${encryptedTransactionData}`);
             }
           }
         }
