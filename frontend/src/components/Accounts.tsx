@@ -42,8 +42,7 @@ class Accounts extends React.Component<AccountsProps> {
 
   // Filter and sort accounts based on current criteria
   getFilteredAccounts = (): IAccount[] => {
-    const { accounts } = this.props;
-    return this.props.isAdmin ? accounts : filterAndSortAccounts(accounts);
+    return filterAndSortAccounts(this.props.accounts);
   };
 
   // Render
@@ -73,7 +72,15 @@ class Accounts extends React.Component<AccountsProps> {
                   }`}
                   onClick={() => this.handleAccountClick(account.account_id)}
                 >
-                  <div className='id'>{account.account_id}</div>
+                  <div
+                    className='id'
+                    onClick={(e) => {
+                      navigator.clipboard.writeText(account.account_id);
+                    }}
+                    title='Click to copy ID'
+                  >
+                    {account.account_id}
+                  </div>
                   {isAdmin && <div className='userId'>{account.user_id}</div>}
                   <div className='balance'>{account.balance.toLocaleString()}$</div>
                   <div className='actions'>
@@ -98,7 +105,7 @@ class Accounts extends React.Component<AccountsProps> {
               ))}
           </div>
         </div>
-        {filteredAccounts.length > 0 && !this.props.isAdmin && <Transactions />}
+        {filteredAccounts.length > 0 && <Transactions />}
       </div>
     );
   }
@@ -178,7 +185,7 @@ class Accounts extends React.Component<AccountsProps> {
     // Only proceed if the account_id is different from current
     if (account_id !== this.props.currentAccountId) {
       this.props.setCurrentAccountAction(account_id);
-      if (!this.props.isAdmin) this.props.prepareReadTransactionsCommandAction(account_id); // Admin user is not currently intended to read transactions ...
+      this.props.prepareReadTransactionsCommandAction(account_id);
     }
   };
 

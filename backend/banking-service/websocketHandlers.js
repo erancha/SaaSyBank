@@ -47,7 +47,7 @@ const onWebsocketConnect = async (socket, request) => {
       ...(await handleRead({
         commandParams: {
           accounts: { all: isAdmin },
-          ...(isAdmin ? {} : { transactions: { fromFirstAccount: true } }), // Admin user is not currently intended to read transactions ...
+          transactions: { fromFirstAccount: true },
         },
         connectedUserId: currentUserId,
       })),
@@ -97,8 +97,6 @@ const onWebsocketMessage = async (message, socket) => {
 
 // Handle command and send notifications
 const handleCommandWithNotifications = async ({ commandType, commandParams, connectedUserId }) => {
-  if (commandType === 'read' && commandParams.transactions && isAdminUser(connectedUserId))
-    throw new Error('Admin user is not currently intended to read transactions ...');
   const response = await handleCommand({ commandType, commandParams, connectedUserId });
 
   const targetUserIds = determineTargetUsers({ commandType, commandParams, response, connectedUserId });
@@ -159,6 +157,7 @@ function determineTargetUsers({ commandType, commandParams, response, connectedU
             response.dataCreated.transactions.accounts.depositResult.user_id
           );
         }
+        targetUserIds.push(process.env.ADMIN_USER_ID);
         break;
       case 'read':
         targetUserIds.push(connectedUserId);

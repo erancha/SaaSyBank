@@ -17,7 +17,12 @@ import {
   deleteAccountAction,
   setAccountConfirmedByBackendAction,
 } from '../redux/accounts/actions';
-import { setTransactionsAction, addTransactionAction, setTransactionConfirmedByBackendAction } from '../redux/transactions/actions';
+import {
+  setTransactionsAction,
+  addTransactionAction,
+  setTransactionConfirmedByBackendAction,
+  prepareReadTransactionsCommandAction,
+} from '../redux/transactions/actions';
 import appConfigData from '../appConfig.json';
 import { Network } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -308,11 +313,18 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
       if (account) {
         // 'single-account' banking function (deposit, withdraw):
         this.props.setAccountStateAction({ ...account });
+        this.props.setCurrentAccountAction(account.account_id);
+        this.props.prepareReadTransactionsCommandAction(account.account_id);
       } else {
         // 'transfer' banking function, between two accounts:
         const { withdrawResult, depositResult } = dataCreated.transactions.accounts;
         this.props.setAccountStateAction({ ...withdrawResult });
         this.props.setAccountStateAction({ ...depositResult });
+
+        const accountIdToFocus =
+          this.props.accounts.find((account) => account.account_id === withdrawResult.account_id)?.account_id ?? depositResult.account_id;
+        this.props.setCurrentAccountAction(accountIdToFocus);
+        this.props.prepareReadTransactionsCommandAction(accountIdToFocus);
       }
     }
   }
@@ -376,6 +388,7 @@ interface WebSocketProps {
   deleteAccountAction: typeof deleteAccountAction;
   setAccountConfirmedByBackendAction: typeof setAccountConfirmedByBackendAction;
   addTransactionAction: typeof addTransactionAction;
+  prepareReadTransactionsCommandAction: typeof prepareReadTransactionsCommandAction;
   setTransactionsAction: typeof setTransactionsAction;
   setTransactionConfirmedByBackendAction: typeof setTransactionConfirmedByBackendAction;
   transactions: any[];
@@ -424,6 +437,7 @@ const mapDispatchToProps = (dispatch: Dispatch) =>
       deleteAccountAction,
       setAccountConfirmedByBackendAction,
       addTransactionAction,
+      prepareReadTransactionsCommandAction,
       setTransactionsAction,
       setTransactionConfirmedByBackendAction,
       setIsAdminAction,

@@ -119,7 +119,9 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
         <div className='executedAt'>{isExecuted ? timeShortDisplay(new Date(transaction.executed_at)) : ''}</div>
         <div className='amount'>
           {isExecuted ? (
-            `${(transaction.amount ?? 0).toLocaleString()}$`
+            `${
+              transaction.bankingFunction === BankingFunctionType.Deposit || transaction.to_account_id === this.props.currentAccount?.account_id ? '+' : '-'
+            }${(transaction.amount ?? 0).toLocaleString()}$`
           ) : (
             <input
               type='number'
@@ -173,7 +175,13 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
         </div>
         <div className='targetAccount'>
           {isExecuted
-            ? `${transaction.to_account_id === this.props.currentAccount?.account_id ? `self, from ${transaction.from_account_id}` : transaction.to_account_id}`
+            ? `${
+                this.props.currentAccount?.account_id === transaction.to_account_id
+                  ? `<==| ${transaction.from_account_id}`
+                  : transaction.to_account_id
+                  ? `|==> ${transaction.to_account_id}`
+                  : ''
+              }`
             : transaction.bankingFunction === BankingFunctionType.Transfer && (
                 <input
                   type='text'
