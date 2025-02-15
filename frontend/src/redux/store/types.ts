@@ -70,7 +70,7 @@ export interface INewAccount {
 }
 
 export interface IAccount extends INewAccount {
-  viewed: boolean;
+  onroute: boolean; // on route from the frontend to the backend for persistance into the database
   is_disabled: boolean;
   user_id: string;
 }
@@ -97,8 +97,8 @@ export interface INewTransaction {
   id: string; // Unique identifier for the transaction
   amount: number; // Amount of money involved
   bankingFunction: string; // Type of transaction: deposit/withdraw/transfer
-  accountId: string; // Source account ID
-  toAccountId: string; // Target account ID (same as accountId for deposit/withdraw)
+  account_id: string; // Source account ID
+  to_account_id: string | null; // Target account ID (same as account_id for deposit/withdraw)
 }
 
 /**
@@ -107,6 +107,8 @@ export interface INewTransaction {
  */
 export interface ITransaction extends INewTransaction {
   executed_at: string; // Timestamp when the transaction was executed
+  onroute: boolean; // on route from the frontend to the backend for persistance into the database
+  from_account_id?: string; // Source account ID for received transfers
 }
 
 export interface IConnectionAndUsername {

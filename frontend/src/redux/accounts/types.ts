@@ -22,7 +22,7 @@ export interface IReadAccountParams {
 export const ADD_ACCOUNT = 'ADD_ACCOUNT';
 export const SET_ACCOUNTS = 'SET_ACCOUNTS';
 export const SET_CURRENT_ACCOUNT = 'SET_CURRENT_ACCOUNT';
-export const SET_ACCOUNT_VIEWED = 'SET_ACCOUNT_VIEWED';
+export const SET_ACCOUNT_CONFIRMED_BY_BACKEND = 'SET_ACCOUNT_CONFIRMED_BY_BACKEND';
 export const SET_ACCOUNT_STATE = 'SET_ACCOUNT_STATE';
 export const DELETE_ACCOUNT = 'DELETE_ACCOUNT';
 
@@ -48,8 +48,8 @@ export interface ISetCurrentAccountAction {
   payload: string;
 }
 
-export interface ISetAccountViewedAction {
-  type: typeof SET_ACCOUNT_VIEWED;
+export interface ISetAccountConfirmedByBackendAction {
+  type: typeof SET_ACCOUNT_CONFIRMED_BY_BACKEND;
   payload: string;
 }
 
@@ -87,7 +87,7 @@ export type AccountActionTypes =
   | IAddAccountAction
   | ISetAccountsAction
   | ISetCurrentAccountAction
-  | ISetAccountViewedAction
+  | ISetAccountConfirmedByBackendAction
   | ISetAccountStateAction
   | IDeleteAccountAction
   | IToggleNewAccountFormAction

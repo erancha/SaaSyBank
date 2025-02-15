@@ -1,7 +1,7 @@
 import { IAccount } from '../redux/store/types';
 
-export const filterAndSortAccounts = (accounts: IAccount[] , userId: string | null /*, searchTerm: string*/) => {
-  return accounts.filter((account) => account.user_id === userId);
+export const filterAndSortAccounts = (accounts: IAccount[]) => {
+  return accounts;
 };
 
 export const timeShortDisplay = (dateTime: Date) => {
@@ -16,4 +16,4 @@ export const timeShortDisplay = (dateTime: Date) => {
   return dateTime.toLocaleString('en-GB', options);
 };
 
-export const getAccount = (accounts: IAccount[], accountId: string) => accounts.find((account) => account.account_id === accountId);
+export const getAccount = (accounts: IAccount[], account_id: string) => accounts.find((account) => account.account_id === account_id);

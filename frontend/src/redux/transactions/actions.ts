@@ -6,6 +6,7 @@ import { ICreateTransactionParams } from './types';
 // Transaction-specific action types
 export const SET_TRANSACTIONS = 'SET_TRANSACTIONS';
 export const ADD_TRANSACTION = 'ADD_TRANSACTION';
+export const SET_TRANSACTION_CONFIRMED_BY_BACKEND = 'SET_TRANSACTION_CONFIRMED_BY_BACKEND';
 
 // Transaction-specific action interfaces
 export interface ISetTransactionsAction {
@@ -18,22 +19,28 @@ export interface IAddTransactionAction {
   payload: ITransaction;
 }
 
+export interface ISetTransactionConfirmedByBackendAction {
+  type: typeof SET_TRANSACTION_CONFIRMED_BY_BACKEND;
+  payload: string; // transaction id
+}
+
 // CRUD operations
-export const prepareCreateTransactionCommandAction = (transaction: Omit<ITransaction, "id">) =>
+export const prepareCreateTransactionCommandAction = (transaction: ITransaction) =>
   prepareCreateCommandAction({
     type: 'transaction' as CommandType,
     params: {
+      id: transaction.id,
       amount: transaction.amount,
       bankingFunction: transaction.bankingFunction,
-      accountId: transaction.accountId,
-      toAccountId: transaction.toAccountId,
+      account_id: transaction.account_id,
+      to_account_id: transaction.to_account_id,
     } as ICreateTransactionParams,
   });
 
-export const prepareReadTransactionsCommandAction = (accountId: string) =>
+export const prepareReadTransactionsCommandAction = (account_id: string) =>
   prepareReadCommandAction({
     type: 'transaction' as CommandType,
-    params: { accountId },
+    params: { account_id },
   });
 
 export const prepareUpdateTransactionCommandAction = (transactionId: string, updates: Partial<ITransaction>) =>
@@ -54,4 +61,9 @@ export const setTransactionsAction = (transactions: ITransaction[]): ISetTransac
 export const addTransactionAction = (transaction: ITransaction): IAddTransactionAction => ({
   type: ADD_TRANSACTION,
   payload: transaction,
+});
+
+export const setTransactionConfirmedByBackendAction = (transactionId: string): ISetTransactionConfirmedByBackendAction => ({
+  type: SET_TRANSACTION_CONFIRMED_BY_BACKEND,
+  payload: transactionId,
 });

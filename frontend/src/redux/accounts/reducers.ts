@@ -3,7 +3,7 @@ import {
   ADD_ACCOUNT,
   SET_ACCOUNTS,
   SET_CURRENT_ACCOUNT,
-  SET_ACCOUNT_VIEWED,
+  SET_ACCOUNT_CONFIRMED_BY_BACKEND,
   SET_ACCOUNT_STATE,
   DELETE_ACCOUNT,
   TOGGLE_NEW_ACCOUNT_FORM,
@@ -31,7 +31,7 @@ export const accountsReducers = (state: AccountsState = initialState.accounts, a
     case ADD_ACCOUNT:
       return {
         ...state,
-        accounts: [...state.accounts, action.payload],
+        accounts: [action.payload, ...state.accounts],
       };
 
     case SET_ACCOUNTS:
@@ -47,10 +47,10 @@ export const accountsReducers = (state: AccountsState = initialState.accounts, a
         currentAccountId: action.payload,
       };
 
-    case SET_ACCOUNT_VIEWED:
+    case SET_ACCOUNT_CONFIRMED_BY_BACKEND:
       return {
         ...state,
-        accounts: state.accounts.map((account) => (account.account_id === action.payload ? { ...account, viewed: true } : account)),
+        accounts: state.accounts.map((account) => (account.account_id === action.payload ? { ...account, onroute: false } : account)),
       };
 
     case SET_ACCOUNT_STATE:

@@ -2,25 +2,15 @@ import { ITransaction } from '../store/types';
 
 // Transaction CRUD params
 export interface ICreateTransactionParams {
+  id: string;
   amount: number;
   bankingFunction: string;
-  accountId: string;
-  toAccountId?: string;
-}
-
-export interface ITransactionUpdates {
-  amount?: number;
-  bankingFunction?: string;
-  accountId?: string;
-  toAccountId?: string;
-}
-
-export interface IUpdateTransactionParams extends ITransactionUpdates {
-  id: string;
+  account_id: string;
+  to_account_id?: string;
 }
 
 export interface IReadTransactionParams {
-  accountId?: string;
+  account_id?: string;
 }
 
 // Transaction-specific action types
@@ -38,6 +28,4 @@ export interface IAddTransactionAction {
   payload: ITransaction;
 }
 
-export type TransactionActionTypes =
-  | ISetTransactionsAction
-  | IAddTransactionAction;
+export type TransactionActionTypes = ISetTransactionsAction | IAddTransactionAction;

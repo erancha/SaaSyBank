@@ -374,7 +374,7 @@ body {
 .transactions-list-header,
 .transaction-row-container {
   display: grid;
-  grid-template-columns: 3fr 3fr 2fr 5fr minmax(60px, 2fr);
+  grid-template-columns: 3fr 3fr 4fr 6fr minmax(60px, 2fr);
   border-radius: 0.5rem;
 }
 .transactions-list-header {
@@ -494,30 +494,25 @@ body {
   margin: 2px;
 }
 
-.account-row-container.unviewed,
-.account-row-container.unviewed {
-  color: darkgreen;
+.account-row-container.onroute,
+.transaction-row-container.onroute { /* on route from the frontend to the backend for persistance into the database */
+  color: darkred;
   > div,
   > div > p,
   > div > select,
   > div > button,
   > div > * > svg {
-    background-color: lightgreen;
+    background-color: lightgoldenrodyellow;
     font-weight: 400;
   }
 }
-.account-row-container.viewed {
-  opacity: 0.7;
-}
 
-.account-row-container.closed,
-.transaction-row-container.closed {
+.account-row-container.closed {
   /* pointer-events: none; Prevents any mouse interaction */
   cursor: not-allowed;
   opacity: 0.3; /* Makes it look disabled */
 }
-.account-row-container.closed > *,
-.transaction-row-container.closed > * {
+.account-row-container.closed > * {
   opacity: 0.8; /* Makes it look disabled */
 }
 
@@ -642,6 +637,8 @@ body {
   background-color: white;
   font-size: 0.8rem;
   transition: background-color 0.2s ease;
+  width: 100%; /* Make inputs take full width of their container */
+  box-sizing: border-box; /* Include padding and border in the width calculation */
 }
 
 .transaction-row-container > div > p {

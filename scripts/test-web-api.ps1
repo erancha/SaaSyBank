@@ -43,14 +43,103 @@ function Execute-Requests {
         )
         
         if ($showOutput) {
-            # Write-Host "-----------------------------------------"
             Write-Host "===== $title =====" -ForegroundColor Cyan
             Write-Host "Request: $requestJson" 
             Write-Host "Response: $responseJson"
         }
 
-        if ($expectedResponse -and $responseJson -ne $expectedResponse) {
-            Write-Warning "Unexpected Response! (expecting: $expectedResponse)"
+        if ($expectedResponse) {
+            [void](Verify-Response -title $title -responseJson $responseJson -expectedPattern $expectedResponse)
+        }
+    }
+
+    function Verify-Response {
+        param (
+            [string]$title,
+            [string]$responseJson,
+            [string]$expectedPattern
+        )
+
+        if (-not $expectedPattern) {
+            return $true
+        }
+
+        try {
+            # Special handling for pure regex patterns (not JSON)
+            if ($expectedPattern.StartsWith('regex:')) {
+                $pattern = $expectedPattern.Substring(6)
+                $result = $responseJson -match "^`"?($pattern)`"?$"
+                if (-not $result) {
+                    Write-Warning "Value '$responseJson' does not match pattern '$pattern'"
+                    return $false
+                }
+                return $true
+            }
+
+            $response = $responseJson | ConvertFrom-Json
+            $expected = $expectedPattern | ConvertFrom-Json
+
+            # Helper function to recursively verify objects
+            function Test-ObjectMatch {
+                param($actual, $expected)
+                
+                if ($null -eq $expected) {
+                    return $true
+                }
+
+                if ($expected -is [string] -and $expected.StartsWith('regex:')) {
+                    $pattern = $expected.Substring(6)
+                    if ($actual -notmatch $pattern) {
+                        Write-Warning "Value '$actual' does not match pattern '$pattern'"
+                        return $false
+                    }
+                    return $true
+                }
+
+                if ($expected -is [PSCustomObject]) {
+                    $expectedProps = $expected | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
+                    foreach ($prop in $expectedProps) {
+                        if ($null -eq $actual.$prop) {
+                            Write-Warning "Missing expected property: $prop"
+                            return $false
+                        }
+                        if (-not (Test-ObjectMatch $actual.$prop $expected.$prop)) {
+                            return $false
+                        }
+                    }
+                    return $true
+                }
+
+                if ($expected -is [array]) {
+                    if ($actual.Count -lt $expected.Count) {
+                        Write-Warning "Array has fewer items than expected"
+                        return $false
+                    }
+                    for ($i = 0; $i -lt $expected.Count; $i++) {
+                        if (-not (Test-ObjectMatch $actual[$i] $expected[$i])) {
+                            return $false
+                        }
+                    }
+                    return $true
+                }
+
+                if ($actual -ne $expected) {
+                    Write-Warning "Value mismatch. Expected: $expected, Got: $actual"
+                    return $false
+                }
+                return $true
+            }
+
+            $result = Test-ObjectMatch $response $expected
+            if (-not $result) {
+                Write-Warning "Response validation failed for: $title"
+                Write-Warning "Full response: $responseJson"
+            }
+            return $result
+        }
+        catch {
+            Write-Warning "Error validating response for $title : $_"
+            return $false
         }
     }
 
@@ -64,61 +153,80 @@ function Execute-Requests {
             # Define the requests with expected responses
             $requests = @(
                 @{
-                    Name   = "Time"
-                    Method = "GET"
-                    Url    = "/api/time"
+                    Name             = "Time"
+                    Method           = "GET"
+                    Url              = "/api/time"
+                    ExpectedResponse = 'regex:"?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"?'
                 },
                 @{
-                    Name   = "Create Account"
-                    Method = "POST"
-                    Url    = "/api/banking/account"
-                    Body   = @{ "accountId" = $accountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
+                    Name             = "Create Account"
+                    Method           = "POST"
+                    Url              = "/api/banking/account"
+                    Body             = @{ "accountId" = $accountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
+                    ExpectedResponse = "{`"message`":`"Account created successfully`",`"payload`":{`"tenant_id`":`"$tenantId`",`"account_id`":`"$accountId`",`"is_disabled`":false,`"balance`":`"0.00`"}}"
                 },
                 @{
-                    Name   = "Create To Account"
-                    Method = "POST"
-                    Url    = "/api/banking/account"
-                    Body   = @{ "accountId" = $toAccountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
+                    Name             = "Create To Account"
+                    Method           = "POST"
+                    Url              = "/api/banking/account"
+                    Body             = @{ "accountId" = $toAccountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
+                    ExpectedResponse = "{`"message`":`"Account created successfully`",`"payload`":{`"tenant_id`":`"$tenantId`",`"account_id`":`"$toAccountId`",`"is_disabled`":false,`"balance`":`"0.00`"}}"
                 },
                 @{
-                    Name   = "Get all Accounts"
-                    Method = "GET"
-                    Url    = "/api/banking/accounts/$tenantId"
+                    Name             = "Get all Accounts"
+                    Method           = "GET"
+                    Url              = "/api/banking/accounts/$tenantId"
+                    ExpectedResponse = "{`"message`":`"Accounts retrieved successfully`",`"payload`":[{`"account_id`":`"regex:.+`",`"balance`":`"regex:\\d+\\.\\d{2}`",`"is_disabled`":false},{`"account_id`":`"regex:.+`",`"balance`":`"regex:\\d+\\.\\d{2}`",`"is_disabled`":false}]}"
                 },
                 @{
-                    Name   = "Deposit"
-                    Method = "POST"
-                    Url    = "/api/banking/deposit"
-                    Body   = @{ "amount" = 1000; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
+                    Name             = "Deposit"
+                    Method           = "POST"
+                    Url              = "/api/banking/deposit"
+                    Body             = @{ "amount" = 1000; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
+                    ExpectedResponse = "{`"message`":`"Deposit successful`",`"payload`":{`"bankingFunction`":`"deposit`",`"amount`":1000,`"account`":{`"tenant_id`":`"$tenantId`",`"account_id`":`"$accountId`",`"balance`":`"1000.00`"}}}"
                 },
                 @{
-                    Name   = "Withdraw"
-                    Method = "POST"
-                    Url    = "/api/banking/withdraw"
-                    Body   = @{ "amount" = 500; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
+                    Name             = "Withdraw"
+                    Method           = "POST"
+                    Url              = "/api/banking/withdraw"
+                    Body             = @{ "amount" = 500; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
+                    ExpectedResponse = "{`"message`":`"Withdraw successful`",`"payload`":{`"bankingFunction`":`"withdraw`",`"amount`":500,`"account`":{`"tenant_id`":`"$tenantId`",`"account_id`":`"$accountId`",`"balance`":`"500.00`"}}}"
                 },
                 @{
-                    Name   = "Transfer"
-                    Method = "POST"
-                    Url    = "/api/banking/transfer"
-                    Body   = @{ "amount" = 200; "fromAccountId" = $accountId; "toAccountId" = $toAccountId; "tenantId" = $tenantId } | ConvertTo-Json
+                    Name             = "Transfer"
+                    Method           = "POST"
+                    Url              = "/api/banking/transfer"
+                    Body             = @{ "amount" = 200; "fromAccountId" = $accountId; "toAccountId" = $toAccountId; "tenantId" = $tenantId } | ConvertTo-Json
+                    ExpectedResponse = "{`"message`":`"Transfer successful`",`"payload`":{`"bankingFunction`":`"transfer`",`"amount`":200}}"
                 },
                 @{
-                    Name             = "Get Balance"
+                    Name             = "Get Balance for From Account"
                     Method           = "GET"
                     Url              = "/api/banking/balance/$tenantId/$accountId"
-                    ExpectedResponse = '{"message":"Balance retrieved successfully","accountId":"' + $accountId + '","balance":"300.00"}'
+                    ExpectedResponse = "{`"message`":`"Balance retrieved successfully`",`"payload`":{`"accountId`":`"$accountId`",`"balance`":`"300.00`"}}"
                 },
                 @{
                     Name             = "Get Balance for To Account"
                     Method           = "GET"
                     Url              = "/api/banking/balance/$tenantId/$toAccountId"
-                    ExpectedResponse = '{"message":"Balance retrieved successfully","accountId":"' + $toAccountId + '","balance":"200.00"}'
+                    ExpectedResponse = "{`"message`":`"Balance retrieved successfully`",`"payload`":{`"accountId`":`"$toAccountId`",`"balance`":`"200.00`"}}"
                 },
                 @{
-                    Name             = "Get Transactions"
+                    Name             = "Get Transactions for Account"
                     Method           = "GET"
                     Url              = "/api/banking/transactions/$tenantId/$accountId"
+                    ExpectedResponse = '{
+                                            "message": "Transactions retrieved successfully",
+                                            "payload": [
+                                                {
+                                                    "id": "regex:[0-9a-f-]+",
+                                                    "executed_at": "regex:\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z",
+                                                    "bankingFunction": "regex:deposit|withdraw|transfer",
+                                                    "amount": "regex:\\d+",
+                                                    "tenant_id": "tenant1"
+                                                }
+                                            ]
+                                        }'
                 }
             )
         }

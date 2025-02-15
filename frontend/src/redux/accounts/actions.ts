@@ -5,7 +5,7 @@ import {
   ADD_ACCOUNT,
   SET_ACCOUNTS,
   SET_CURRENT_ACCOUNT,
-  SET_ACCOUNT_VIEWED,
+  SET_ACCOUNT_CONFIRMED_BY_BACKEND,
   SET_ACCOUNT_STATE,
   DELETE_ACCOUNT,
   TOGGLE_NEW_ACCOUNT_FORM,
@@ -16,7 +16,7 @@ import {
   IAddAccountAction,
   ISetAccountsAction,
   ISetCurrentAccountAction,
-  ISetAccountViewedAction,
+  ISetAccountConfirmedByBackendAction,
   ISetAccountStateAction,
   IDeleteAccountAction,
   IToggleNewAccountFormAction,
@@ -26,10 +26,10 @@ import {
 } from './types';
 
 // Account-specific action creators
-export const prepareCreateAccountCommandAction = (accountId: string, initialBalance: number) =>
+export const prepareCreateAccountCommandAction = (account_id: string, initialBalance: number) =>
   prepareCreateCommandAction({
     type: 'account' as CommandType,
-    params: { account_id: accountId, balance: initialBalance } as ICreateAccountParams,
+    params: { account_id: account_id, balance: initialBalance } as ICreateAccountParams,
   });
 
 export const addAccountAction = (account: IAccount): IAddAccountAction => ({
@@ -48,21 +48,21 @@ export const setAccountsAction = (accounts: IAccount[]): ISetAccountsAction => (
   payload: accounts,
 });
 
-export const setCurrentAccountAction = (accountId: string): ISetCurrentAccountAction => ({
+export const setCurrentAccountAction = (account_id: string): ISetCurrentAccountAction => ({
   type: SET_CURRENT_ACCOUNT,
-  payload: accountId,
+  payload: account_id,
 });
 
-export const setAccountViewedAction = (accountId: string): ISetAccountViewedAction => ({
-  type: SET_ACCOUNT_VIEWED,
-  payload: accountId,
+export const setAccountConfirmedByBackendAction = (account_id: string): ISetAccountConfirmedByBackendAction => ({
+  type: SET_ACCOUNT_CONFIRMED_BY_BACKEND,
+  payload: account_id,
 });
 
-export const prepareUpdateAccountCommandAction = (accountId: string, updates: Partial<IAccount>) =>
+export const prepareUpdateAccountCommandAction = (account_id: string, updates: Partial<IAccount>) =>
   prepareUpdateCommandAction({
     type: 'account' as CommandType,
     params: {
-      account_id: accountId,
+      account_id: account_id,
       ...updates,
     },
   });
@@ -72,15 +72,15 @@ export const setAccountStateAction = (update: Partial<IAccount> & { account_id: 
   payload: update,
 });
 
-export const prepareDeleteAccountCommandAction = (accountId: string) =>
+export const prepareDeleteAccountCommandAction = (account_id: string) =>
   prepareDeleteCommandAction({
     type: 'account' as CommandType,
-    params: { account_id: accountId },
+    params: { account_id: account_id },
   });
 
-export const deleteAccountAction = (accountId: string): IDeleteAccountAction => ({
+export const deleteAccountAction = (account_id: string): IDeleteAccountAction => ({
   type: DELETE_ACCOUNT,
-  payload: accountId,
+  payload: account_id,
 });
 
 // Form management action creators

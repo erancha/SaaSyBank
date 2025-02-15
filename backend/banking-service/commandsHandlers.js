@@ -2,20 +2,28 @@ const { CURRENT_TASK_ID } = require('./constants');
 const dbData = require('./dbData');
 
 // Middleware for logging parameters
-const logMiddleware = (fn) => {
+const logMiddleware = (name) => (fn) => {
   const wrappedFunction = async function (...args) {
     if (process.env.ENABLE_ENHANCED_LOGGING.toLowerCase() === 'true') {
-      console.log(`Calling function: ${fn.name} with parameters: ${JSON.stringify(args)}`);
+      console.log(`Calling function: ${name} with parameters: ${JSON.stringify(args)}`);
     }
     return await fn(...args);
   };
-  wrappedFunction.name = fn.name;
+  wrappedFunction.name = name;
   return wrappedFunction;
 };
 
+// Helper function for logging task messages
+const logTaskMessage = (type, data) => {
+  const formattedData = process.env.ENABLE_ENHANCED_LOGGING.toLowerCase() === 'true' ? JSON.stringify(data, null, 2) : JSON.stringify(data).substring(0, 600);
+  console.log(`Task ${CURRENT_TASK_ID}: ${type} ${formattedData}.`);
+};
+
 // Main command handler
-const handleCommand = logMiddleware(async function ({ commandType, commandParams, connectedUserId, commandClientSocket }) {
+const handleCommand = logMiddleware('handleCommand')(async function ({ commandType, commandParams, connectedUserId }) {
   let response;
+
+  logTaskMessage('Request', { commandType, commandParams, connectedUserId });
 
   switch (commandType) {
     case 'create':
@@ -38,7 +46,9 @@ const handleCommand = logMiddleware(async function ({ commandType, commandParams
       throw 'Unknown command type!';
   }
 
-  writeResponse({ response, responseSocket: commandClientSocket });
+  logTaskMessage('Response', response);
+
+  return response;
 });
 
 // Command handler to create a record
@@ -49,43 +59,45 @@ async function handleCreate({ commandParams, connectedUserId }) {
     const { account_id, balance } = commandParams.account;
     response = { account: await dbData.createAccount(account_id, balance, connectedUserId, process.env.TENANT_ID) };
   } else if (commandParams.transaction) {
-    const { bankingFunction, amount, accountId, toAccountId } = commandParams.transaction;
+    const { id, bankingFunction, amount, account_id, to_account_id } = commandParams.transaction;
     switch (bankingFunction) {
       case 'deposit':
-        dbResult = (await dbData.deposit(amount, accountId, process.env.TENANT_ID))[0];
+        dbResult = await dbData.deposit(id, amount, account_id, process.env.TENANT_ID);
         break;
       case 'withdraw':
-        dbResult = (await dbData.withdraw(amount, accountId, process.env.TENANT_ID))[0];
+        dbResult = await dbData.withdraw(id, amount, account_id, process.env.TENANT_ID);
         break;
       case 'transfer':
-        const transferResult = await dbData.transfer(amount, accountId, toAccountId, process.env.TENANT_ID);
-        dbResult = { withdrawResult: transferResult.withdrawResult[0], depositResult: transferResult.depositResult[0] };
+        dbResult = await dbData.transfer(id, amount, account_id, to_account_id, process.env.TENANT_ID);
         break;
       default:
         throw 'Unknown banking function!';
     }
-    response = { transaction: { account: dbResult } };
+    response = { transaction: dbResult };
   }
 
-  if (response) return { dataCreated: { ...response } };
+  if (response) return { dataCreated: response };
 }
 
 // Command handler to read records
-const handleRead = logMiddleware(async function ({ commandParams, connectedUserId }) {
+const handleRead = logMiddleware('handleRead')(async function ({ commandParams, connectedUserId }) {
   let response; // to the client socket
 
   if (commandParams.accounts) {
-    const dbResult = commandParams.accounts.all ? await dbData.getAllAccounts(process.env.TENANT_ID) : await dbData.getAccountsByUserId(connectedUserId);
+    const dbResult = commandParams.accounts.all
+      ? await dbData.getAllAccounts(process.env.TENANT_ID) /* handle pagination */
+      : await dbData.getAccountsByUserId(connectedUserId);
     response = { accounts: dbResult || [] };
   }
   if (commandParams.transactions) {
-    let accountId = commandParams.transactions.accountId;
-    if (!accountId && response?.accounts.length > 0) {
-      const firstReadAccount = response.accounts.find((account) => account.user_id === connectedUserId);
-      if (firstReadAccount) accountId = firstReadAccount.account_id;
+    let account_id = commandParams.transactions.account_id;
+    if (!account_id && response?.accounts.length > 0) {
+      // If no account_id was provided and there are accounts for the current user, return the first one by default
+      const firstConnectedUserAccount = !commandParams.accounts.all ? response.accounts[0] : null;
+      if (firstConnectedUserAccount) account_id = firstConnectedUserAccount.account_id;
     }
-    if (accountId) {
-      const transactions = await dbData.getTransactions(accountId, process.env.TENANT_ID);
+    if (account_id) {
+      const transactions = await dbData.getTransactions(account_id, process.env.TENANT_ID);
       response = { ...response, transactions };
     }
   }
@@ -101,9 +113,8 @@ async function handleUpdate({ commandParams }) {
     const { account_id, is_disabled } = commandParams.account;
     response = { account: await dbData.setAccountState(account_id, is_disabled, process.env.TENANT_ID) };
   }
-  // } else if (commandParams.transaction) {
 
-  if (response) return { dataUpdated: { ...response } };
+  if (response) return { dataUpdated: response };
 }
 
 // Command handler to delete a record
@@ -115,19 +126,7 @@ async function handleDelete({ commandParams }) {
     response = { account: await dbData.deleteAccount(account_id, process.env.TENANT_ID) };
   }
 
-  if (response) return { dataDeleted: { ...response } };
+  if (response) return { dataDeleted: response };
 }
 
-// Helper function to write a response to the client
-function writeResponse({ response, responseSocket }) {
-  if (response) {
-    if (responseSocket) responseSocket.send(JSON.stringify(response));
-    console.log(
-      `Task ${CURRENT_TASK_ID}: Response ${
-        process.env.ENABLE_ENHANCED_LOGGING.toLowerCase() === 'true' ? JSON.stringify(response, null, 2) : JSON.stringify(response).substring(0, 500)
-      }${responseSocket ? ' sent to the client' : ''}.`
-    );
-  } else throw `Task ${CURRENT_TASK_ID}: No response was prepared!`;
-}
-
-module.exports = { handleCommand, handleRead, writeResponse };
+module.exports = { handleCommand, handleRead };

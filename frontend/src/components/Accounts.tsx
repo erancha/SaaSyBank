@@ -5,9 +5,10 @@ import { AppState, IAccount } from '../redux/store/types';
 import { IAccountUpdates } from '../redux/accounts/types';
 import {
   prepareCreateAccountCommandAction,
+  addAccountAction,
   setCurrentAccountAction,
-  setAccountViewedAction,
   setAccountStateAction,
+  setAccountConfirmedByBackendAction,
   prepareUpdateAccountCommandAction,
   prepareDeleteAccountCommandAction,
   deleteAccountAction,
@@ -42,7 +43,7 @@ class Accounts extends React.Component<AccountsProps> {
   // Filter and sort accounts based on current criteria
   getFilteredAccounts = (): IAccount[] => {
     const { accounts } = this.props;
-    return this.props.isAdmin ? accounts : filterAndSortAccounts(accounts, this.props.userId);
+    return this.props.isAdmin ? accounts : filterAndSortAccounts(accounts);
   };
 
   // Render
@@ -56,7 +57,7 @@ class Accounts extends React.Component<AccountsProps> {
           {showNewAccountForm && this.renderNewAccountForm()}
 
           <div className={`accounts-list-header${isAdmin ? ' admin' : ''}`}>
-            <div className='id'>Id</div>
+            <div className='id'>Account Id</div>
             {isAdmin && <div className='userId'>User Id</div>}
             <div className='balance'>Balance</div>
             <div className='actions' />
@@ -67,14 +68,14 @@ class Accounts extends React.Component<AccountsProps> {
               filteredAccounts.map((account) => (
                 <div
                   key={account.account_id}
-                  className={`account-row-container${account.viewed ? ' viewed' : ' unviewed'}${!account.is_disabled ? ' open' : ' closed'}${
-                    isAdmin ? ' admin' : ''
-                  }${account.account_id === currentAccountId ? ' current' : ''}`}
+                  className={`account-row-container${account.onroute ? ' onroute' : ''}${!account.is_disabled ? ' open' : ' closed'}${isAdmin ? ' admin' : ''}${
+                    account.account_id === currentAccountId ? ' current' : ''
+                  }`}
                   onClick={() => this.handleAccountClick(account.account_id)}
                 >
                   <div className='id'>{account.account_id}</div>
                   {isAdmin && <div className='userId'>{account.user_id}</div>}
-                  <div className='balance'>{account.balance}</div>
+                  <div className='balance'>{account.balance.toLocaleString()}$</div>
                   <div className='actions'>
                     {isAdmin ? (
                       <>
@@ -129,6 +130,7 @@ class Accounts extends React.Component<AccountsProps> {
             onChange={(e) => updateNewAccountFieldAction('balance', Number(e.target.value))}
             className={`balance ${errors.balance ? 'error' : ''}`}
             ref={this.newAccountInputRef}
+            step='100'
           />
           {errors.balance && <span className='error-message'>{errors.balance}</span>}
         </div>
@@ -146,9 +148,17 @@ class Accounts extends React.Component<AccountsProps> {
 
     if (Object.keys(errors).length === 0) {
       this.props.prepareCreateAccountCommandAction(this.props.newAccountForm.id, this.props.newAccountForm.balance);
-      this.props.resetNewAccountFormAction();
       this.props.toggleNewAccountFormAction(false);
+      this.props.addAccountAction({
+        ...this.props.newAccountForm,
+        account_id: this.props.newAccountForm.id,
+        onroute: true,
+        is_disabled: true,
+        user_id: this.props.userId || '',
+      });
+      this.props.resetNewAccountFormAction();
       this.props.setCurrentAccountAction(this.props.newAccountForm.id);
+      this.props.setAccountConfirmedByBackendAction(this.props.newAccountForm.id);
     } else {
       this.props.setNewAccountErrorsAction(errors);
     }
@@ -165,19 +175,18 @@ class Accounts extends React.Component<AccountsProps> {
   };
 
   // Handle account click
-  handleAccountClick = (accountId: string) => {
-    this.props.setAccountViewedAction(accountId);
-    this.props.setCurrentAccountAction(accountId);
-    this.props.prepareReadTransactionsCommandAction(accountId);
+  handleAccountClick = (account_id: string) => {
+    this.props.setCurrentAccountAction(account_id);
+    this.props.prepareReadTransactionsCommandAction(account_id);
   };
 
   // Handle account update: backend + connected clients, and locally.
-  handleAccountState = (accountId: string, is_disabled: boolean) => {
-    if (!accountId) console.error(`Invalid account id: ${accountId}`);
+  handleAccountState = (account_id: string, is_disabled: boolean) => {
+    if (!account_id) console.error(`Invalid account id: ${account_id}`);
     else {
       const updates: IAccountUpdates = { is_disabled };
-      this.props.prepareUpdateAccountCommandAction(accountId, updates);
-      this.props.setAccountStateAction({ account_id: accountId, ...updates });
+      this.props.prepareUpdateAccountCommandAction(account_id, updates);
+      this.props.setAccountStateAction({ account_id: account_id, ...updates });
     }
   };
 
@@ -198,9 +207,10 @@ interface AccountsProps {
   currentAccountId: string | null;
   prepareCreateAccountCommandAction: typeof prepareCreateAccountCommandAction;
   prepareReadTransactionsCommandAction: typeof prepareReadTransactionsCommandAction;
+  addAccountAction: typeof addAccountAction;
   setCurrentAccountAction: typeof setCurrentAccountAction;
-  setAccountViewedAction: typeof setAccountViewedAction;
   setAccountStateAction: typeof setAccountStateAction;
+  setAccountConfirmedByBackendAction: typeof setAccountConfirmedByBackendAction;
   prepareUpdateAccountCommandAction: typeof prepareUpdateAccountCommandAction;
   prepareDeleteAccountCommandAction: typeof prepareDeleteAccountCommandAction;
   deleteAccountAction: typeof deleteAccountAction;
@@ -233,9 +243,10 @@ const mapDispatchToProps = (dispatch: Dispatch) =>
     {
       prepareCreateAccountCommandAction,
       prepareReadTransactionsCommandAction,
+      addAccountAction,
       setCurrentAccountAction,
-      setAccountViewedAction,
       setAccountStateAction,
+      setAccountConfirmedByBackendAction,
       prepareUpdateAccountCommandAction,
       prepareDeleteAccountCommandAction,
       deleteAccountAction,

@@ -65,6 +65,8 @@ exports.handler = async (event) => {
 
       // Create tables and index
       const createTableQueries = `
+        CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
         CREATE TABLE IF NOT EXISTS accounts (
             id SERIAL,
             tenant_id TEXT NOT NULL,
@@ -78,11 +80,12 @@ exports.handler = async (event) => {
         );
 
         CREATE TABLE IF NOT EXISTS accountTransactions (
-            id SERIAL,
+            id UUID DEFAULT uuid_generate_v4(),
             tenant_id TEXT NOT NULL,
             account_id TEXT NOT NULL,
             executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             transaction BYTEA NOT NULL,
+            encryptedTransaction BYTEA,
             PRIMARY KEY (tenant_id, account_id, id)
         );
       `;

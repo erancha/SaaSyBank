@@ -1,32 +1,27 @@
 import React from 'react';
 import { connect } from 'react-redux';
 import { bindActionCreators, Dispatch } from 'redux';
-import {
-  AppState,
-  IAccount,
-  INewTransaction,
-  BankingFunctionType,
-  IConnectionAndUsername,
-} from '../redux/store/types';
-import {
-  ICreateCommand,
-  IReadCommand,
-  IUpdateCommand,
-  IDeleteCommand,
-} from '../redux/crud/types';
+import { AppState, IAccount, IConnectionAndUsername } from '../redux/store/types';
+import { ICreateCommand, IReadCommand, IUpdateCommand, IDeleteCommand } from '../redux/crud/types';
 import { IUpdateAccountParams } from '../redux/accounts/types';
 import { IReadTransactionParams } from '../redux/transactions/types';
 import { IReadAnalyticsParams } from '../redux/analytics/types';
 import { setAnalyticsTypeAction } from '../redux/mnu/actions';
 import { setIsAdminAction } from '../redux/auth/actions';
 import { setWSConnectedAction, setAppVisibleAction, setConnectionsAndUsernamesAction, toggleConnectionsAction } from '../redux/websockets/actions';
-import { addAccountAction, setAccountsAction, setCurrentAccountAction, setAccountStateAction, deleteAccountAction } from '../redux/accounts/actions';
-import { setTransactionsAction } from '../redux/transactions/actions';
+import {
+  addAccountAction,
+  setAccountsAction,
+  setCurrentAccountAction,
+  setAccountStateAction,
+  deleteAccountAction,
+  setAccountConfirmedByBackendAction,
+} from '../redux/accounts/actions';
+import { setTransactionsAction, addTransactionAction, setTransactionConfirmedByBackendAction } from '../redux/transactions/actions';
 import appConfigData from '../appConfig.json';
 import { Network } from 'lucide-react';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { getAccount } from 'utils/utils';
 
 class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
   private webSocket: WebSocket | null = null;
@@ -107,10 +102,7 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
           upload({ command: { type: 'create', params: { account: createCommand.params } } });
           break;
         case 'transaction':
-          const transaction = createCommand.params as INewTransaction;
-          const toAccountId = transaction.bankingFunction === BankingFunctionType.Transfer ? transaction.toAccountId : transaction.accountId;
-          const toUserId = getAccount(this.props.accounts, toAccountId)?.user_id;
-          upload({ command: { type: 'create', params: { transaction: createCommand.params }, to: toUserId } }); // TODO: notify this.props.userId as well
+          upload({ command: { type: 'create', params: { transaction: createCommand.params } } });
           break;
       }
     }
@@ -121,7 +113,7 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
       switch (readCommand.type) {
         case 'transaction':
           const transactionParams = readCommand.params as IReadTransactionParams;
-          upload({ command: { type: 'read', params: { transactions: { accountId: transactionParams.accountId } } } });
+          upload({ command: { type: 'read', params: { transactions: { account_id: transactionParams.account_id } } } });
           break;
         case 'analytics':
           const analyticsParams = readCommand.params as IReadAnalyticsParams;
@@ -136,12 +128,10 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
       switch (updateCommand.type) {
         case 'account': {
           const updateAccountParams = updateCommand.params as IUpdateAccountParams;
-          const account = this.props.accounts.find((acc) => acc.account_id === updateAccountParams.account_id);
           upload({
             command: {
               type: 'update',
               params: { account: updateAccountParams },
-              to: account?.user_id,
             },
           });
           break;
@@ -158,13 +148,10 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
     if (deleteCommand && deleteCommand !== prevProps.deleteCommand) {
       switch (deleteCommand.type) {
         case 'account': {
-          const account_id = deleteCommand.params.account_id;
-          const account = this.props.accounts.find((acc) => acc.account_id === account_id);
           upload({
             command: {
               type: 'delete',
-              params: { account: { account_id } },
-              to: account?.user_id,
+              params: { account: { account_id: deleteCommand.params.account_id } },
             },
           });
           break;
@@ -306,36 +293,33 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
   private handleDataCreated(dataCreated: any) {
     if (dataCreated.account) {
       const newReceivedAccount: IAccount = { ...dataCreated.account };
-      this.props.addAccountAction({ ...newReceivedAccount, viewed: true });
+      const isNewAccount = !this.props.accounts.find((account) => account.account_id === newReceivedAccount.account_id);
+      if (isNewAccount) this.props.addAccountAction({ ...newReceivedAccount });
+      else this.props.setAccountConfirmedByBackendAction(newReceivedAccount.account_id);
+      toast(`New account ${dataCreated.account.account_id} is pending confirmation`, { autoClose: this.props.isAdmin ? 10000 : 5000 });
     } else if (dataCreated.transaction) {
-      // Balance updates
-      if (dataCreated.transaction.account) {
-        const account = dataCreated.transaction.account;
+      const newReceivedTransaction = dataCreated.transaction;
+      const isNewTransaction = !this.props.transactions.find((transaction) => transaction.id === newReceivedTransaction.id);
+      if (isNewTransaction) this.props.addTransactionAction({ ...newReceivedTransaction });
+      else this.props.setTransactionConfirmedByBackendAction(newReceivedTransaction.id);
 
-        // For a transfer that affects two accounts
-        if (account.withdrawResult && account.depositResult) {
-          const { withdrawResult, depositResult } = dataCreated.transaction.account;
-          this.props.setAccountStateAction({
-            account_id: withdrawResult.account_id,
-            balance: withdrawResult.balance,
-          });
-          this.props.setAccountStateAction({
-            account_id: depositResult.account_id,
-            balance: depositResult.balance,
-          });
-        } else {
-          this.props.setAccountStateAction({
-            account_id: account.account_id,
-            balance: account.balance,
-          });
-        }
+      // Balance updates:
+      const account = dataCreated.transaction.account;
+      if (account) {
+        // 'single-account' banking function (deposit, withdraw):
+        this.props.setAccountStateAction({ ...account });
+      } else {
+        // 'transfer' banking function, between two accounts:
+        const { withdrawResult, depositResult } = dataCreated.transaction.accounts;
+        this.props.setAccountStateAction({ ...withdrawResult });
+        this.props.setAccountStateAction({ ...depositResult });
       }
     }
   }
 
   // CRUD: event containing Read data
   private handleDataRead(dataRead: any) {
-    if (dataRead.accounts) this.props.setAccountsAction(dataRead.accounts.map((account: IAccount) => ({ ...account, viewed: true })));
+    if (dataRead.accounts) this.props.setAccountsAction(dataRead.accounts);
     if (dataRead.transactions) this.props.setTransactionsAction(dataRead.transactions);
   }
 
@@ -344,7 +328,7 @@ class WebSocketService extends React.Component<WebSocketProps, WebSocketState> {
     if (dataUpdated.account) {
       this.props.setAccountStateAction(dataUpdated.account);
       if (!dataUpdated.account.is_disabled) this.props.setCurrentAccountAction(dataUpdated.account.account_id);
-      toast(`Account ${dataUpdated.account.account_id} is now ${dataUpdated.account.is_disabled ? 'disabled' : 'enabled'}`);
+      toast(`Account ${dataUpdated.account.account_id} is now ${dataUpdated.account.is_disabled ? 'disabled' : 'enabled'}`, { autoClose: 3000 });
     }
   }
 
@@ -389,10 +373,12 @@ interface WebSocketProps {
   setAccountsAction: typeof setAccountsAction;
   setCurrentAccountAction: typeof setCurrentAccountAction;
   setAccountStateAction: typeof setAccountStateAction;
-
   deleteAccountAction: typeof deleteAccountAction;
-
+  setAccountConfirmedByBackendAction: typeof setAccountConfirmedByBackendAction;
+  addTransactionAction: typeof addTransactionAction;
   setTransactionsAction: typeof setTransactionsAction;
+  setTransactionConfirmedByBackendAction: typeof setTransactionConfirmedByBackendAction;
+  transactions: any[];
   analyticsType: string | null;
   setAnalyticsTypeAction: typeof setAnalyticsTypeAction;
   currentAccountId: string | null;
@@ -419,6 +405,7 @@ const mapStateToProps = (state: AppState) => ({
   deleteCommand: state.crud.deleteCommand,
   accounts: state.accounts.accounts,
   currentAccountId: state.accounts.currentAccountId,
+  transactions: state.transactions.transactions,
   analyticsType: state.mnu.analyticsType, // TODO
 });
 
@@ -434,10 +421,13 @@ const mapDispatchToProps = (dispatch: Dispatch) =>
       setCurrentAccountAction,
       addAccountAction,
       setAccountStateAction,
+      deleteAccountAction,
+      setAccountConfirmedByBackendAction,
+      addTransactionAction,
       setTransactionsAction,
+      setTransactionConfirmedByBackendAction,
       setIsAdminAction,
       setAnalyticsTypeAction,
-      deleteAccountAction,
     },
     dispatch
   );

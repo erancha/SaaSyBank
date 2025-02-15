@@ -8,7 +8,7 @@ import { CheckCircle, XCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 // Type-safe field names for ITransaction
-type TransactionField = keyof Pick<ITransaction, 'bankingFunction' | 'amount' | 'toAccountId'>;
+type TransactionField = keyof Pick<ITransaction, 'bankingFunction' | 'amount' | 'to_account_id'>;
 
 class Transactions extends React.Component<AccountTransactionsProps, { emptyTransaction: ITransaction }> {
   private transactionsRefs: React.RefObject<HTMLDivElement>[];
@@ -17,9 +17,10 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
     id: uuidv4(),
     amount: 0,
     bankingFunction: BankingFunctionType.Deposit,
-    accountId: this.props.currentAccount?.account_id || '',
-    toAccountId: '',
+    account_id: this.props.currentAccount?.account_id || '',
+    to_account_id: '',
     executed_at: '',
+    onroute: true,
   });
 
   constructor(props: AccountTransactionsProps) {
@@ -29,12 +30,12 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
   }
 
   componentDidUpdate(prevProps: AccountTransactionsProps) {
-    // Update emptyTransaction's accountId when currentAccount changes
+    // Update emptyTransaction's account_id when currentAccount changes
     if (this.props.currentAccount && prevProps.currentAccount?.account_id !== this.props.currentAccount.account_id && !this.props.currentAccount.is_disabled) {
       this.setState((prevState) => ({
         emptyTransaction: {
           ...prevState.emptyTransaction,
-          accountId: this.props.currentAccount?.account_id || '',
+          account_id: this.props.currentAccount?.account_id || '',
         },
       }));
     }
@@ -43,7 +44,7 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
   isTransactionValid = (transaction: ITransaction) => {
     if (transaction.amount <= 0) return false;
     if (transaction.bankingFunction === BankingFunctionType.Withdraw && transaction.amount > (this.props.currentAccount?.balance || 0)) return false;
-    if (transaction.bankingFunction === BankingFunctionType.Transfer && !transaction.toAccountId) return false;
+    if (transaction.bankingFunction === BankingFunctionType.Transfer && !transaction.to_account_id) return false;
     return true;
   };
 
@@ -59,9 +60,9 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
 
   // Handler for executing a transaction
   handleExecuteTransaction = (transaction: ITransaction) => {
-    if (transaction.bankingFunction === BankingFunctionType.Transfer) this.props.addTransactionAction(transaction); // Add the transaction to the source account, locally - the target account will receive a notification from the backend.
-    // TODO: Refer to the comment '// TODO: notify this.props.userId as well' in WebSocketService.tsx - when the backend will notify the source account after the transaction is confirmed, the current addition will become unnecessary.
-    this.props.prepareCreateTransactionCommandAction({ ...transaction, bankingFunction: transaction.bankingFunction.toLowerCase() });
+    this.props.addTransactionAction({ ...transaction, executed_at: new Date().toISOString() });
+    this.props.prepareCreateTransactionCommandAction(transaction);
+    this.setState({ emptyTransaction: this.createInitialTransaction() });
   };
 
   // Handler for cancelling the changes made to a transaction
@@ -85,14 +86,17 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
           </div>
 
           <div className='transactions-list'>
-            {this.props.currentAccount && !this.props.currentAccount.is_disabled && (
-              <div key={0} className='transaction-row-container input'>
-                {this.renderTransaction(this.state.emptyTransaction)}
-              </div>
+            {this.props.currentAccount && !this.props.currentAccount.is_disabled && !this.props.isAdmin && (
+              <div className='transaction-row-container input'>{this.renderTransaction(this.state.emptyTransaction)}</div>
             )}
             {transactions.length > 0 ? (
               transactions.map((transaction, index) => (
-                <div key={transaction.id} ref={this.transactionsRefs[index]} tabIndex={index} className='transaction-row-container'>
+                <div
+                  key={transaction.id}
+                  ref={this.transactionsRefs[index]}
+                  tabIndex={index}
+                  className={`transaction-row-container${transaction.onroute ? ' onroute' : ''}`}
+                >
                   {this.renderTransaction(transaction)}
                 </div>
               ))
@@ -169,12 +173,12 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
         </div>
         <div className='targetAccount'>
           {isExecuted
-            ? transaction.toAccountId
+            ? `${transaction.to_account_id === this.props.currentAccount?.account_id ? `self, from ${transaction.from_account_id}` : transaction.to_account_id}`
             : transaction.bankingFunction === BankingFunctionType.Transfer && (
                 <input
                   type='text'
-                  value={transaction.toAccountId}
-                  onChange={(e) => (!isExecuted ? this.handleEmptyTransactionChange('toAccountId' as TransactionField, e.target.value) : undefined)}
+                  value={transaction.to_account_id ?? ''}
+                  onChange={(e) => (!isExecuted ? this.handleEmptyTransactionChange('to_account_id' as TransactionField, e.target.value) : undefined)}
                   readOnly={isExecuted}
                   placeholder={'Enter target account'}
                 />
@@ -197,13 +201,14 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
   };
 
   // Retrieves account details from either transactions accounts or all accounts using account ID
-  getAccountDetails = (accountId: string) => {
+  getAccountDetails = (account_id: string) => {
     const { accounts } = this.props;
-    return getAccount(accounts, accountId);
+    return getAccount(accounts, account_id);
   };
 }
 
 interface AccountTransactionsProps {
+  isAdmin: boolean | null;
   transactions: ITransaction[];
   accounts: IAccount[];
   currentAccount: IAccount | undefined;
@@ -214,6 +219,7 @@ interface AccountTransactionsProps {
 
 // Maps required state from Redux store to component props
 const mapStateToProps = (state: AppState) => ({
+  isAdmin: state.auth.isAdmin,
   transactions: state.transactions.transactions,
   accounts: state.accounts.accounts,
   currentAccount: state.accounts.currentAccountId ? state.accounts.accounts.find((acc) => acc.account_id === state.accounts.currentAccountId) : undefined,

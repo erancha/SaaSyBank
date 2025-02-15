@@ -913,23 +913,21 @@ Resources:
       FifoQueue: true
       ContentBasedDeduplication: true
 
-  TransactionsLoggerFunction:
+  TransactionsEncryptorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: transactionsLogger.handler
+      CodeUri: ../backend/transactions-encryptor
+      Handler: transactionsEncryptor.handler
       Runtime: nodejs20.x
-      CodeUri: ../backend/transactions-logger/
       Layers:
         - !Ref pgLayer
-        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:NotesEncryptionLayer:240' # TODO: Adjust the security group
-        # - 'arn:aws:lambda:eu-central-1:575491442067:layer:IoredisLayer:37' # TODO: Adjust the security group
       Environment:
         Variables:
           RDS_ENDPOINT: !GetAtt MyRDSDBInstance.Endpoint.Address
           DB_NAME: !Ref BankingDatabaseName
           DB_USERNAME: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:username}}'
           DB_PASSWORD: '{{resolve:secretsmanager:arn:aws:secretsmanager:eu-central-1:575491442067:secret:/sb/rdscredentials-T3ztmQ:SecretString:password}}'
-      Role: !GetAtt TransactionsLoggerFunctionExecutionRole.Arn
+      Role: !GetAtt TransactionsEncryptorFunctionExecutionRole.Arn
       Events: # event source mapping
         SQSTrigger:
           Type: SQS
@@ -944,7 +942,7 @@ Resources:
         SecurityGroupIds:
           - !Ref MyRDSBasedFunctionSG
 
-  TransactionsLoggerFunctionExecutionRole:
+  TransactionsEncryptorFunctionExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
