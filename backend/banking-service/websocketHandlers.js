@@ -42,14 +42,12 @@ const onWebsocketConnect = async (socket, request) => {
   console.log(`Task ${CURRENT_TASK_ID}: User ${socket.userId} connected and inserted to ${CONNECTED_USERS_IDS_TO_NAMES_MAP}.`);
 
   try {
-    const isAdmin = currentUserId === process.env.ADMIN_USER_ID;
+    const isAdmin = isAdminUser(currentUserId);
     const response = {
       ...(await handleRead({
         commandParams: {
           accounts: { all: isAdmin },
-          transactions: {
-            /*TODO*/
-          },
+          ...(isAdmin ? {} : { transactions: { fromFirstAccount: true } }), // Admin user is not currently intended to read transactions ...
         },
         connectedUserId: currentUserId,
       })),
@@ -99,6 +97,8 @@ const onWebsocketMessage = async (message, socket) => {
 
 // Handle command and send notifications
 const handleCommandWithNotifications = async ({ commandType, commandParams, connectedUserId }) => {
+  if (commandType === 'read' && commandParams.transactions && isAdminUser(connectedUserId))
+    throw new Error('Admin user is not currently intended to read transactions ...');
   const response = await handleCommand({ commandType, commandParams, connectedUserId });
 
   const targetUserIds = determineTargetUsers({ commandType, commandParams, response, connectedUserId });
@@ -134,27 +134,30 @@ const handleCommandWithNotifications = async ({ commandType, commandParams, conn
 function determineTargetUsers({ commandType, commandParams, response, connectedUserId }) {
   const targetUserIds = [];
 
-  if (commandParams.account) {
+  if (commandParams.accounts) {
     switch (commandType) {
       case 'create':
         targetUserIds.push(process.env.ADMIN_USER_ID, connectedUserId);
         break;
       case 'update':
-        targetUserIds.push(response.dataUpdated.account.user_id);
+        targetUserIds.push(response.dataUpdated.accounts.user_id);
         break;
       case 'delete':
-        targetUserIds.push(response.dataDeleted.account.user_id);
+        targetUserIds.push(response.dataDeleted.accounts.user_id);
         break;
     }
-  } else if (commandParams.transaction) {
+  } else if (commandParams.transactions) {
     switch (commandType) {
       case 'create':
-        if (response.dataCreated.transaction.account) {
+        if (response.dataCreated.transactions.account) {
           // 'single-account' banking function (deposit, withdraw):
-          targetUserIds.push(response.dataCreated.transaction.account.user_id);
+          targetUserIds.push(response.dataCreated.transactions.account.user_id);
         } else {
           // 'transfer' banking function, between two accounts:
-          targetUserIds.push(response.dataCreated.transaction.accounts.withdrawResult.user_id, response.dataCreated.transaction.accounts.depositResult.user_id);
+          targetUserIds.push(
+            response.dataCreated.transactions.accounts.withdrawResult.user_id,
+            response.dataCreated.transactions.accounts.depositResult.user_id
+          );
         }
         break;
       case 'read':
@@ -200,6 +203,11 @@ const onWebsocketDisconnect = async (socket) => {
     console.error(`Task ${CURRENT_TASK_ID}: Error during disconnect:`, error);
   }
 };
+
+// Helper function to check if a user is an admin
+function isAdminUser(userId) {
+  return userId === process.env.ADMIN_USER_ID;
+}
 
 // Helper function to write a response to the client
 function writeResponse({ response, responseSocket }) {

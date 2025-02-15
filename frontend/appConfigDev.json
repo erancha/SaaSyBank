@@ -1,0 +1,13 @@
+{
+    "REST_API_URL":  "http://sbf-ALB-568025640.eu-central-1.elb.amazonaws.com/api/banking/ws",
+    "WEBSOCKET_API_URL":  "http://sbf-ALB-568025640.eu-central-1.elb.amazonaws.com/api/banking/ws",
+    "BUILD":  "sbf 2025 02/15_09:39",
+    "COGNITO":  {
+                    "userPoolId":  "eu-central-1_OHq1aZYju",
+                    "userPoolWebClientId":  "psteaq6abhvsihkq5ddm5dsbe",
+                    "domain":  "ena-575491442067.auth.eu-central-1.amazoncognito.com",
+                    "region":  "eu-central-1",
+                    "redirectSignIn":  "http://localhost:3000",
+                    "redirectSignOut":  "http://localhost:3000"
+                }
+}

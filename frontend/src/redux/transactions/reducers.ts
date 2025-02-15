@@ -8,9 +8,11 @@ import {
   IAddTransactionAction,
   SET_TRANSACTION_CONFIRMED_BY_BACKEND,
   ISetTransactionConfirmedByBackendAction,
+  CLEAR_TRANSACTIONS,
+  IClearTransactionsAction,
 } from './actions';
 
-type HandledActions = ISetTransactionsAction | IAddTransactionAction | ISetTransactionConfirmedByBackendAction;
+type HandledActions = ISetTransactionsAction | IAddTransactionAction | ISetTransactionConfirmedByBackendAction | IClearTransactionsAction;
 
 export const transactionsReducers = (state: TransactionsState = initialState.transactions, action: HandledActions): TransactionsState => {
   switch (action.type) {
@@ -34,6 +36,14 @@ export const transactionsReducers = (state: TransactionsState = initialState.tra
       return {
         ...state,
         transactions: state.transactions.map((transaction) => (transaction.id === action.payload ? { ...transaction, onroute: false } : transaction)),
+      };
+    }
+
+    // Clear all transactions
+    case CLEAR_TRANSACTIONS: {
+      return {
+        ...state,
+        transactions: [],
       };
     }
 

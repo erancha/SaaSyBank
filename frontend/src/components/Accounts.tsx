@@ -98,7 +98,7 @@ class Accounts extends React.Component<AccountsProps> {
               ))}
           </div>
         </div>
-        {filteredAccounts.length > 0 && <Transactions />}
+        {filteredAccounts.length > 0 && !this.props.isAdmin && <Transactions />}
       </div>
     );
   }
@@ -158,7 +158,6 @@ class Accounts extends React.Component<AccountsProps> {
       });
       this.props.resetNewAccountFormAction();
       this.props.setCurrentAccountAction(this.props.newAccountForm.id);
-      this.props.setAccountConfirmedByBackendAction(this.props.newAccountForm.id);
     } else {
       this.props.setNewAccountErrorsAction(errors);
     }
@@ -176,8 +175,11 @@ class Accounts extends React.Component<AccountsProps> {
 
   // Handle account click
   handleAccountClick = (account_id: string) => {
-    this.props.setCurrentAccountAction(account_id);
-    this.props.prepareReadTransactionsCommandAction(account_id);
+    // Only proceed if the account_id is different from current
+    if (account_id !== this.props.currentAccountId) {
+      this.props.setCurrentAccountAction(account_id);
+      if (!this.props.isAdmin) this.props.prepareReadTransactionsCommandAction(account_id); // Admin user is not currently intended to read transactions ...
+    }
   };
 
   // Handle account update: backend + connected clients, and locally.

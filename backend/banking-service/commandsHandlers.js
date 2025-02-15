@@ -55,11 +55,11 @@ const handleCommand = logMiddleware('handleCommand')(async function ({ commandTy
 async function handleCreate({ commandParams, connectedUserId }) {
   let response; // to the client socket
 
-  if (commandParams.account) {
-    const { account_id, balance } = commandParams.account;
-    response = { account: await dbData.createAccount(account_id, balance, connectedUserId, process.env.TENANT_ID) };
-  } else if (commandParams.transaction) {
-    const { id, bankingFunction, amount, account_id, to_account_id } = commandParams.transaction;
+  if (commandParams.accounts) {
+    const { account_id, balance } = commandParams.accounts;
+    response = { accounts: await dbData.createAccount(account_id, balance, connectedUserId, process.env.TENANT_ID) };
+  } else if (commandParams.transactions) {
+    const { id, bankingFunction, amount, account_id, to_account_id } = commandParams.transactions;
     switch (bankingFunction) {
       case 'deposit':
         dbResult = await dbData.deposit(id, amount, account_id, process.env.TENANT_ID);
@@ -73,7 +73,7 @@ async function handleCreate({ commandParams, connectedUserId }) {
       default:
         throw 'Unknown banking function!';
     }
-    response = { transaction: dbResult };
+    response = { transactions: dbResult };
   }
 
   if (response) return { dataCreated: response };
@@ -91,15 +91,8 @@ const handleRead = logMiddleware('handleRead')(async function ({ commandParams, 
   }
   if (commandParams.transactions) {
     let account_id = commandParams.transactions.account_id;
-    if (!account_id && response?.accounts.length > 0) {
-      // If no account_id was provided and there are accounts for the current user, return the first one by default
-      const firstConnectedUserAccount = !commandParams.accounts.all ? response.accounts[0] : null;
-      if (firstConnectedUserAccount) account_id = firstConnectedUserAccount.account_id;
-    }
-    if (account_id) {
-      const transactions = await dbData.getTransactions(account_id, process.env.TENANT_ID);
-      response = { ...response, transactions };
-    }
+    if (!account_id && response?.accounts.length > 0 && commandParams.transactions.fromFirstAccount) account_id = response.accounts[0].account_id;
+    if (account_id) response = { ...response, transactions: await dbData.getTransactions(account_id, process.env.TENANT_ID) };
   }
 
   if (response) return { dataRead: { ...response } };
@@ -109,9 +102,9 @@ const handleRead = logMiddleware('handleRead')(async function ({ commandParams, 
 async function handleUpdate({ commandParams }) {
   let response; // to the client socket
 
-  if (commandParams.account) {
-    const { account_id, is_disabled } = commandParams.account;
-    response = { account: await dbData.setAccountState(account_id, is_disabled, process.env.TENANT_ID) };
+  if (commandParams.accounts) {
+    const { account_id, is_disabled } = commandParams.accounts;
+    response = { accounts: await dbData.setAccountState(account_id, is_disabled, process.env.TENANT_ID) };
   }
 
   if (response) return { dataUpdated: response };
@@ -121,9 +114,9 @@ async function handleUpdate({ commandParams }) {
 async function handleDelete({ commandParams }) {
   let response; // to the client socket
 
-  if (commandParams.account) {
-    const { account_id } = commandParams.account;
-    response = { account: await dbData.deleteAccount(account_id, process.env.TENANT_ID) };
+  if (commandParams.accounts) {
+    const { account_id } = commandParams.accounts;
+    response = { accounts: await dbData.deleteAccount(account_id, process.env.TENANT_ID) };
   }
 
   if (response) return { dataDeleted: response };

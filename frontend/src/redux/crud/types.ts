@@ -1,5 +1,5 @@
 // Generic CRUD command types
-export type CommandType = 'account' | 'transaction' | 'analytics';
+export type CommandType = 'accounts' | 'transactions' | 'analytics';
 
 // Base command interface
 export interface IBaseCommand<T = any, P = any> {
@@ -40,7 +40,7 @@ export interface IPrepareDeleteCommandAction<P = any> {
   payload: IDeleteCommand<P>;
 }
 
-export type CrudActionTypes<P = any> = 
+export type CrudActionTypes<P = any> =
   | IPrepareCreateCommandAction<P>
   | IPrepareReadCommandAction<P>
   | IPrepareUpdateCommandAction<P>

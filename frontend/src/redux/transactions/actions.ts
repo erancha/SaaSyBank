@@ -7,6 +7,7 @@ import { ICreateTransactionParams } from './types';
 export const SET_TRANSACTIONS = 'SET_TRANSACTIONS';
 export const ADD_TRANSACTION = 'ADD_TRANSACTION';
 export const SET_TRANSACTION_CONFIRMED_BY_BACKEND = 'SET_TRANSACTION_CONFIRMED_BY_BACKEND';
+export const CLEAR_TRANSACTIONS = 'CLEAR_TRANSACTIONS';
 
 // Transaction-specific action interfaces
 export interface ISetTransactionsAction {
@@ -24,10 +25,14 @@ export interface ISetTransactionConfirmedByBackendAction {
   payload: string; // transaction id
 }
 
+export interface IClearTransactionsAction {
+  type: typeof CLEAR_TRANSACTIONS;
+}
+
 // CRUD operations
 export const prepareCreateTransactionCommandAction = (transaction: ITransaction) =>
   prepareCreateCommandAction({
-    type: 'transaction' as CommandType,
+    type: 'transactions' as CommandType,
     params: {
       id: transaction.id,
       amount: transaction.amount,
@@ -39,13 +44,13 @@ export const prepareCreateTransactionCommandAction = (transaction: ITransaction)
 
 export const prepareReadTransactionsCommandAction = (account_id: string) =>
   prepareReadCommandAction({
-    type: 'transaction' as CommandType,
+    type: 'transactions' as CommandType,
     params: { account_id },
   });
 
 export const prepareUpdateTransactionCommandAction = (transactionId: string, updates: Partial<ITransaction>) =>
   prepareUpdateCommandAction({
-    type: 'transaction' as CommandType,
+    type: 'transactions' as CommandType,
     params: {
       id: transactionId,
       ...updates,
@@ -66,4 +71,8 @@ export const addTransactionAction = (transaction: ITransaction): IAddTransaction
 export const setTransactionConfirmedByBackendAction = (transactionId: string): ISetTransactionConfirmedByBackendAction => ({
   type: SET_TRANSACTION_CONFIRMED_BY_BACKEND,
   payload: transactionId,
+});
+
+export const clearTransactionsAction = (): IClearTransactionsAction => ({
+  type: CLEAR_TRANSACTIONS,
 });

@@ -69,8 +69,18 @@ export interface INewAccount {
   balance: number;
 }
 
-export interface IAccount extends INewAccount {
-  onroute: boolean; // on route from the frontend to the backend for persistance into the database
+/**
+ * Interface for entities that can be marked as "on route" while being processed by the backend
+ */
+export interface IOnRoute {
+  onroute: boolean; // Indicates if the entity is being processed by the backend
+}
+
+/**
+ * Represents an account.
+ * Extends INewAccount to include on route status, disabled status, and user ID.
+ */
+export interface IAccount extends INewAccount, IOnRoute {
   is_disabled: boolean;
   user_id: string;
 }
@@ -103,11 +113,10 @@ export interface INewTransaction {
 
 /**
  * Represents a transaction as stored in the Redux state.
- * Extends INewTransaction to include execution timestamp.
+ * Extends INewTransaction to include execution timestamp and on route status.
  */
-export interface ITransaction extends INewTransaction {
+export interface ITransaction extends INewTransaction, IOnRoute {
   executed_at: string; // Timestamp when the transaction was executed
-  onroute: boolean; // on route from the frontend to the backend for persistance into the database
   from_account_id?: string; // Source account ID for received transfers
 }
 

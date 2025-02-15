@@ -1,6 +1,7 @@
+import { Dispatch } from 'redux';
 import { IAccount } from '../store/types';
-import { prepareCreateCommandAction, prepareReadCommandAction, prepareUpdateCommandAction, prepareDeleteCommandAction } from '../crud/actions';
 import { CommandType } from '../crud/types';
+import { prepareCreateCommandAction, prepareReadCommandAction, prepareUpdateCommandAction, prepareDeleteCommandAction } from '../crud/actions';
 import {
   ADD_ACCOUNT,
   SET_ACCOUNTS,
@@ -24,11 +25,12 @@ import {
   ISetNewAccountErrorsAction,
   IResetNewAccountFormAction,
 } from './types';
+import { clearTransactionsAction } from '../transactions/actions';
 
 // Account-specific action creators
 export const prepareCreateAccountCommandAction = (account_id: string, initialBalance: number) =>
   prepareCreateCommandAction({
-    type: 'account' as CommandType,
+    type: 'accounts' as CommandType,
     params: { account_id: account_id, balance: initialBalance } as ICreateAccountParams,
   });
 
@@ -39,7 +41,7 @@ export const addAccountAction = (account: IAccount): IAddAccountAction => ({
 
 export const prepareReadAccountsCommandAction = () =>
   prepareReadCommandAction({
-    type: 'account' as CommandType,
+    type: 'accounts' as CommandType,
     params: {},
   });
 
@@ -48,10 +50,14 @@ export const setAccountsAction = (accounts: IAccount[]): ISetAccountsAction => (
   payload: accounts,
 });
 
-export const setCurrentAccountAction = (account_id: string): ISetCurrentAccountAction => ({
-  type: SET_CURRENT_ACCOUNT,
-  payload: account_id,
-});
+export const setCurrentAccountAction = (account_id: string) => (dispatch: Dispatch) => {
+  dispatch(clearTransactionsAction());
+  const action: ISetCurrentAccountAction = {
+    type: SET_CURRENT_ACCOUNT,
+    payload: account_id,
+  };
+  dispatch(action);
+};
 
 export const setAccountConfirmedByBackendAction = (account_id: string): ISetAccountConfirmedByBackendAction => ({
   type: SET_ACCOUNT_CONFIRMED_BY_BACKEND,
@@ -60,7 +66,7 @@ export const setAccountConfirmedByBackendAction = (account_id: string): ISetAcco
 
 export const prepareUpdateAccountCommandAction = (account_id: string, updates: Partial<IAccount>) =>
   prepareUpdateCommandAction({
-    type: 'account' as CommandType,
+    type: 'accounts' as CommandType,
     params: {
       account_id: account_id,
       ...updates,
@@ -74,7 +80,7 @@ export const setAccountStateAction = (update: Partial<IAccount> & { account_id: 
 
 export const prepareDeleteAccountCommandAction = (account_id: string) =>
   prepareDeleteCommandAction({
-    type: 'account' as CommandType,
+    type: 'accounts' as CommandType,
     params: { account_id: account_id },
   });
 
