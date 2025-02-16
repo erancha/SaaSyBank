@@ -11,6 +11,7 @@
   "description": "",
   "dependencies": {
     "@aws-sdk/client-sqs": "^3.693.0",
+    "cors": "^2.8.5",
     "express": "^4.21.1",
     "ioredis": "^5.4.2",
     "jsonwebtoken": "^9.0.2",

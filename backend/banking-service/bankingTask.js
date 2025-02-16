@@ -1,5 +1,6 @@
 const http = require('http');
 const express = require('express');
+const cors = require('cors');
 const WebSocket = require('ws');
 const { CURRENT_TASK_ID } = require('./constants');
 const { onWebsocketConnect } = require('./websocketHandlers');
@@ -13,6 +14,14 @@ httpServer.listen(SERVER_PORT, () => console.log(`Banking service is running on 
 
 // Enable the parsing of incoming JSON payloads in HTTP requests
 app.use(express.json());
+
+// Enable CORS for all routes
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
 
 const websocketServer = new WebSocket.Server({ server: httpServer });
 websocketServer.on('connection', onWebsocketConnect);
@@ -72,18 +81,45 @@ bankingRouter.get('/health', async (req, res) => {
   }
 });
 
-// Create account
-bankingRouter.post('/account', async (req, res) => {
-  const { accountId, initialBalance = 0, tenantId } = req.body;
-  if (!accountId || !tenantId) return res.status(400).json({ message: 'Account ID and Tenant ID are required' });
+// Create a user
+bankingRouter.post('/user', async (req, res) => {
+  const { userId, userName, email } = req.body;
+  if (!userId || !userName || !email) return res.status(400).json({ message: 'User ID, User Name, and Email are required' });
 
   try {
-    const userId = '43e4c8a2-4081-70d9-613a-244f8f726307'; // bettyuser100@gmail.com
-    const result = await dbData.createAccount(accountId, initialBalance, userId, tenantId);
+    const result = await dbData.insertUser(userId, userName, email, process.env.TENANT_ID);
+    res.status(201).json({
+      message: 'User created successfully',
+      payload: result,
+    });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ message: 'Error creating user' });
+  }
+});
+
+// Get all users
+bankingRouter.get('/users', async (req, res) => {
+  try {
+    const users = await dbData.getAllUsers(process.env.TENANT_ID);
+    res.json({ status: 'OK', users });
+  } catch (error) {
+    console.error('Error getting users:', error);
+    res.status(500).json({ status: 'ERROR', message: 'Failed to retrieve users' });
+  }
+});
+
+// Create an account
+bankingRouter.post('/account', async (req, res) => {
+  const { accountId, initialBalance = 0, userId } = req.body;
+  if (!accountId || !userId) return res.status(400).json({ message: 'Account ID and User ID are required' });
+
+  try {
+    const result = await dbData.createAccount(accountId, initialBalance, userId, process.env.TENANT_ID);
     if (!result) return res.status(409).json({ message: 'Account already exists' });
 
     // Enable the account after creation
-    await dbData.setAccountState(accountId, false, tenantId);
+    await dbData.setAccountState(accountId, false, process.env.TENANT_ID);
 
     res.status(201).json({
       message: 'Account created successfully',
@@ -96,13 +132,10 @@ bankingRouter.post('/account', async (req, res) => {
 });
 
 // Get all accounts
-bankingRouter.get('/accounts/:tenantId', async (req, res) => {
-  const { tenantId } = req.params;
-  if (!tenantId) return res.status(400).json({ message: 'Tenant ID is required' });
-
+bankingRouter.get('/accounts', async (req, res) => {
   try {
-    const result = await dbData.getAllAccounts(tenantId);
-    if (result.length === 0) return res.status(404).json({ message: 'No accounts found for this tenant' });
+    const result = await dbData.getAllAccounts(process.env.TENANT_ID);
+    if (result.length === 0) return res.status(404).json({ message: 'No accounts found' });
     res.json({
       message: 'Accounts retrieved successfully',
       payload: result,
@@ -113,13 +146,66 @@ bankingRouter.get('/accounts/:tenantId', async (req, res) => {
   }
 });
 
-// Handle getting balance requests
-bankingRouter.get('/balance/:tenantId/:accountId', async (req, res) => {
-  const { tenantId, accountId } = req.params;
-  if (!tenantId || !accountId) return res.status(400).json({ message: 'Both Tenant ID and Account ID are required' });
+// Get accounts by user ID
+bankingRouter.get('/accounts/user', async (req, res) => {
+  const { userId } = req.query;
 
   try {
-    const { balance, accountFound } = await dbData.getAccountBalance(tenantId, accountId);
+    const accounts = await dbData.getAccountsByUserId(userId, process.env.TENANT_ID);
+    res.json({
+      message: 'Accounts retrieved successfully',
+      payload: accounts,
+    });
+  } catch (error) {
+    console.error('Error retrieving accounts by user ID:', error);
+    res.status(500).json({ message: 'Error retrieving accounts' });
+  }
+});
+
+// Get all accounts grouped by user:
+// [
+//   {
+//       "user_id": "43e4c8a2-4081-70d9-613a-244f8f726307",
+//       "user_name": "Betty User",
+//       "accounts": [
+//           {
+//               "account_id": "39e49084-f32d-49bf-9d47-40c1dad9c06c",
+//               "balance": 300,
+//               "is_disabled": false,
+//               "created_at": "2025-02-15T18:05:47.59694+00:00",
+//               "updated_at": "2025-02-15T18:05:47.60156+00:00"
+//           },
+//           {
+//               "account_id": "dfa72097-597b-4199-b44d-70c96e3070d6",
+//               "balance": 200,
+//               "is_disabled": false,
+//               "created_at": "2025-02-15T18:05:47.408421+00:00",
+//               "updated_at": "2025-02-15T18:05:47.411317+00:00"
+//           }
+//       ]
+//   }
+// ]
+bankingRouter.get('/accounts/grouped', async (req, res) => {
+  try {
+    const usersAccounts = await dbData.getAllAccountsByUserId(process.env.TENANT_ID);
+    const response = {
+      message: 'Accounts grouped by user retrieved successfully',
+      payload: usersAccounts,
+    };
+    res.json(response);
+  } catch (error) {
+    console.error('[GET /accounts/grouped] Error:', error);
+    res.status(500).json({ message: 'Error retrieving grouped accounts' });
+  }
+});
+
+// Get account balance
+bankingRouter.get('/balance/:accountId', async (req, res) => {
+  const { accountId } = req.params;
+  if (!accountId) return res.status(400).json({ message: 'Account ID is required' });
+
+  try {
+    const { balance, accountFound } = await dbData.getAccountBalance(process.env.TENANT_ID, accountId);
     if (!accountFound) return res.status(404).json({ message: 'Account not found' });
     res.json({
       message: 'Balance retrieved successfully',
@@ -131,13 +217,13 @@ bankingRouter.get('/balance/:tenantId/:accountId', async (req, res) => {
   }
 });
 
-// Handle deposit requests
+// Deposit
 bankingRouter.post('/deposit', async (req, res) => {
-  const { amount, accountId, tenantId } = req.body;
-  if (!tenantId || !accountId || amount === undefined) return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
+  const { amount, accountId } = req.body;
+  if (!accountId || amount === undefined) return res.status(400).json({ message: 'Account ID and Amount are required' });
 
   try {
-    const result = await dbData.deposit(undefined, amount, accountId, tenantId);
+    const result = await dbData.deposit(undefined, amount, accountId, process.env.TENANT_ID);
     if (!result) return res.status(404).json({ message: 'Account not found' });
     res.json({
       message: 'Deposit successful',
@@ -149,13 +235,13 @@ bankingRouter.post('/deposit', async (req, res) => {
   }
 });
 
-// Handle withdraw requests
+// Withdraw
 bankingRouter.post('/withdraw', async (req, res) => {
-  const { amount, accountId, tenantId } = req.body;
-  if (!tenantId || !accountId || amount === undefined) return res.status(400).json({ message: 'Account ID, Tenant ID, and Amount are required' });
+  const { amount, accountId } = req.body;
+  if (!accountId || amount === undefined) return res.status(400).json({ message: 'Account ID and Amount are required' });
 
   try {
-    const result = await dbData.withdraw(undefined, amount, accountId, tenantId);
+    const result = await dbData.withdraw(undefined, amount, accountId, process.env.TENANT_ID);
     if (!result) return res.status(404).json({ message: 'Account not found' });
     res.json({
       message: 'Withdraw successful',
@@ -167,14 +253,14 @@ bankingRouter.post('/withdraw', async (req, res) => {
   }
 });
 
-// Handle transfer requests
+// Transfer (between two accounts)
 bankingRouter.post('/transfer', async (req, res) => {
-  const { amount, fromAccountId, toAccountId, tenantId } = req.body;
-  if (!tenantId || !fromAccountId || !toAccountId || amount === undefined)
-    return res.status(400).json({ message: 'From Account ID, To Account ID, Tenant ID, and Amount are required' });
+  const { amount, fromAccountId, toAccountId } = req.body;
+  if (!fromAccountId || !toAccountId || amount === undefined)
+    return res.status(400).json({ message: 'From Account ID, To Account ID, and Amount are required' });
 
   try {
-    const transferResult = await dbData.transfer(undefined, amount, fromAccountId, toAccountId, tenantId);
+    const transferResult = await dbData.transfer(undefined, amount, fromAccountId, toAccountId, process.env.TENANT_ID);
     if (!transferResult.accounts.withdrawResult) return res.status(404).json({ message: 'From Account not found' });
     else if (!transferResult.accounts.depositResult) return res.status(404).json({ message: 'To Account not found' });
     else {
@@ -190,13 +276,13 @@ bankingRouter.post('/transfer', async (req, res) => {
 });
 
 // Get all transactions for an account
-bankingRouter.get('/transactions/:tenantId/:accountId', async (req, res) => {
-  const { accountId, tenantId } = req.params;
+bankingRouter.get('/transactions/:accountId', async (req, res) => {
+  const { accountId } = req.params;
 
-  if (!accountId || !tenantId) return res.status(400).json({ message: 'Account ID and Tenant ID are required' });
+  if (!accountId) return res.status(400).json({ message: 'Account ID is required' });
 
   try {
-    const transactions = await dbData.getTransactions(accountId, tenantId);
+    const transactions = await dbData.getTransactions(accountId, process.env.TENANT_ID);
     res.json({
       message: 'Transactions retrieved successfully',
       payload: transactions,

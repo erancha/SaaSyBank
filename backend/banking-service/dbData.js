@@ -40,6 +40,49 @@ const healthCheck = logMiddleware('healthCheck')(async () => {
   }
 });
 
+// Insert or update user
+const insertUser = logMiddleware('insertUser')(async (userId, userName, email, tenantId) => {
+  let pgClient;
+  try {
+    pgClient = await pgPool.connect();
+    const result = await pgClient.query(
+      `INSERT INTO users (user_id, user_name, email_address, tenant_id) 
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id) DO UPDATE 
+       SET user_name = $2, email_address = $3, tenant_id = $4
+       RETURNING user_id, user_name, email_address, tenant_id`,
+      [userId, userName, email, tenantId]
+    );
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error in insertUser:', error);
+    throw error;
+  } finally {
+    if (pgClient) pgClient.release();
+  }
+});
+
+// Get all users
+const getAllUsers = logMiddleware('getAllUsers')(async (tenantId) => {
+  let pgClient;
+  try {
+    pgClient = await pgPool.connect();
+    const result = await pgClient.query(
+      `SELECT user_id, user_name, email_address 
+       FROM users 
+       WHERE tenant_id = $1 
+       ORDER BY user_name`,
+      [tenantId]
+    );
+    return result.rows;
+  } catch (error) {
+    console.error('Error in getAllUsers:', error);
+    throw error;
+  } finally {
+    if (pgClient) pgClient.release();
+  }
+});
+
 // Create an account
 const createAccount = logMiddleware('createAccount')(async (account_id, initialBalance, user_id, tenant_id) => {
   let pgClient;
@@ -109,37 +152,126 @@ const deleteAccount = logMiddleware('deleteAccount')(async (account_id, tenant_i
   }
 });
 
-// Get all accounts
+// Get all accounts with user information
 const getAllAccounts = logMiddleware('getAllAccounts')(async (tenant_id) => {
   let pgClient;
   try {
     pgClient = await pgPool.connect();
     const result = await pgClient.query(
-      'SELECT account_id,user_id,balance,is_disabled,created_at,updated_at FROM accounts WHERE tenant_id = $1 ORDER BY updated_at DESC',
+      // INNER JOIN (default JOIN) only returns records that have matching values in both tables
+      // Example: If account.user_id = 'A' and users table doesn't have user_id 'A', the account won't be returned
+      `SELECT a.account_id, a.user_id, u.user_name, a.balance, a.is_disabled, a.created_at, a.updated_at 
+       FROM accounts a 
+       JOIN users u ON a.user_id = u.user_id 
+       WHERE a.tenant_id = $1 
+       ORDER BY a.updated_at DESC`,
       [tenant_id]
     );
     return result.rows;
   } catch (error) {
-    console.error('Error listing accounts', error);
-    throw error; // Rethrow the error
+    console.error('Error in getAllAccounts:', error);
+    throw error;
   } finally {
     if (pgClient) pgClient.release();
   }
 });
 
-// Get accounts by user id
-const getAccountsByUserId = logMiddleware('getAccountsByUserId')(async (userId) => {
+// Get accounts by user ID
+const getAccountsByUserId = logMiddleware('getAccountsByUserId')(async (user_id, tenant_id) => {
   let pgClient;
   try {
     pgClient = await pgPool.connect();
     const result = await pgClient.query(
-      'SELECT account_id,balance,is_disabled,tenant_id,created_at,updated_at FROM accounts WHERE user_id = $1 ORDER BY updated_at DESC',
-      [userId]
+      `SELECT account_id, balance, is_disabled
+       FROM accounts 
+       WHERE user_id = $1 AND tenant_id = $2
+       ORDER BY updated_at DESC`,
+      [user_id, tenant_id]
     );
     return result.rows;
   } catch (error) {
-    console.error('Error getting accounts by userId', error);
-    throw error; // Rethrow the error
+    console.error('Error in getAccountsByUserId:', error);
+    throw error;
+  } finally {
+    if (pgClient) pgClient.release();
+  }
+});
+
+// Get all accounts grouped by user:
+// [
+//   {
+//       "user_id": "43e4c8a2-4081-70d9-613a-244f8f726307",
+//       "user_name": "Betty User",
+//       "accounts": [
+//           {
+//               "account_id": "39e49084-f32d-49bf-9d47-40c1dad9c06c",
+//               "balance": 300,
+//               "is_disabled": false,
+//               "created_at": "2025-02-15T18:05:47.59694+00:00",
+//               "updated_at": "2025-02-15T18:05:47.60156+00:00"
+//           },
+//           {
+//               "account_id": "dfa72097-597b-4199-b44d-70c96e3070d6",
+//               "balance": 200,
+//               "is_disabled": false,
+//               "created_at": "2025-02-15T18:05:47.408421+00:00",
+//               "updated_at": "2025-02-15T18:05:47.411317+00:00"
+//           }
+//       ]
+//   }
+// ]
+const getAllAccountsByUserId = logMiddleware('getAllAccountsByUserId')(async (tenant_id, requiredFields = ['account_id'], onlyEnabled = true) => {
+  let pgClient;
+  try {
+    pgClient = await pgPool.connect();
+
+    // Validate required fields, Ensure account_id is always included
+    const validFields = ['account_id', 'balance', 'is_disabled', 'created_at', 'updated_at'];
+    const fields = requiredFields.filter((field) => validFields.includes(field));
+    if (!fields.includes('account_id')) fields.unshift('account_id');
+
+    // Build the json_build_object string for the selected fields
+    const fieldSelections = fields.map((field) => `'${field}', a.${field}`).join(',\n          ');
+
+    // Get users with their accounts. Supports:
+    // 1. Field selection (always includes account_id)
+    // 2. Filter out disabled accounts (onlyEnabled)
+    // 3. Skip users with no valid accounts (EXISTS)
+    // 4. Return [] instead of null for empty accounts (COALESCE)
+    const result = await pgClient.query(
+      `SELECT json_build_object(
+        'user_id', u.user_id,
+        'user_name', u.user_name,
+        'accounts', COALESCE( -- Like ?? in JS: returns first non-null value. If json_agg returns null (no rows), use '[]'
+          (
+            SELECT json_agg(
+              json_build_object(
+                ${fieldSelections}
+              ) ORDER BY a.created_at DESC
+            )
+            FROM accounts a 
+            WHERE a.user_id = u.user_id 
+              AND a.tenant_id = $1
+              ${onlyEnabled ? 'AND NOT a.is_disabled' : ''}
+          ),
+          '[]'
+        )
+      ) as user_accounts
+      FROM users u
+      WHERE u.tenant_id = $1
+        AND EXISTS (
+          SELECT 1 FROM accounts a 
+          WHERE a.user_id = u.user_id 
+            AND a.tenant_id = $1
+            ${onlyEnabled ? 'AND NOT a.is_disabled' : ''}
+        )
+      ORDER BY u.user_name ASC`,
+      [tenant_id]
+    );
+    return result.rows.map((row) => row.user_accounts);
+  } catch (error) {
+    console.error('Error in getAllAccountsByUserId:', error);
+    throw error;
   } finally {
     if (pgClient) pgClient.release();
   }
@@ -179,7 +311,7 @@ const deposit = logMiddleware('deposit')(async (id, amount, account_id, tenant_i
       let result = { account: accountResult.rows[0] };
       if (shouldLogTransaction) {
         const transactionData = { bankingFunction: 'deposit', amount };
-        const transactionDataForLog = { ...transactionData, account_id, tenant_id };
+        const transactionDataForLog = { ...transactionData, account_id };
         const transactionId = await logTransaction(id, tenant_id, account_id, transactionDataForLog);
         if (shouldManageConnection) await pgClient.query('COMMIT');
 
@@ -222,7 +354,7 @@ const withdraw = logMiddleware('withdraw')(async (id, amount, account_id, tenant
       let result = { account: accountResult.rows[0] };
       if (shouldLogTransaction) {
         const transactionData = { bankingFunction: 'withdraw', amount };
-        const transactionDataForLog = { ...transactionData, account_id, tenant_id };
+        const transactionDataForLog = { ...transactionData, account_id };
         const transactionId = await logTransaction(id, tenant_id, account_id, transactionDataForLog);
         if (shouldManageConnection) await pgClient.query('COMMIT');
 
@@ -248,22 +380,22 @@ const withdraw = logMiddleware('withdraw')(async (id, amount, account_id, tenant
   }
 });
 
-// Transfer between two accounts
-const transfer = logMiddleware('transfer')(async (id, amount, from_account_id, to_account_id, tenant_id) => {
+// Transfer (between two accounts)
+const transfer = logMiddleware('transfer')(async (id, amount, account_id, to_account_id, tenant_id) => {
   let pgClient;
   try {
     pgClient = await pgPool.connect();
     await pgClient.query('BEGIN');
     let depositResult;
-    const withdrawResult = await withdraw(undefined, amount, from_account_id, tenant_id, false, pgClient);
+    const withdrawResult = await withdraw(undefined, amount, account_id, tenant_id, false, pgClient);
     if (!withdrawResult) await pgClient.query('ROLLBACK');
     else {
       depositResult = await deposit(undefined, amount, to_account_id, tenant_id, false, pgClient);
       if (!depositResult) await pgClient.query('ROLLBACK');
       else {
-        const transactionData = { bankingFunction: 'transfer', amount, from_account_id, to_account_id };
-        const transactionDataForLog = { ...transactionData, tenant_id };
-        const transactionId = await logTransaction(id, tenant_id, from_account_id, transactionDataForLog);
+        const transactionData = { bankingFunction: 'transfer', amount, account_id, to_account_id };
+        const transactionDataForLog = { ...transactionData };
+        const transactionId = await logTransaction(id, tenant_id, account_id, transactionDataForLog);
         await logTransaction(undefined, tenant_id, to_account_id, transactionDataForLog);
         await pgClient.query('COMMIT');
 
@@ -288,7 +420,29 @@ const transfer = logMiddleware('transfer')(async (id, amount, from_account_id, t
   }
 });
 
-// Get transactions for an account
+// Log a transaction in the accountTransactions table
+// @param {string} id - The ID of the transaction. If not provided, a new UUID will be generated.
+// @param {string} tenant_id - The ID of the tenant.
+// @param {string} account_id - The ID of the account.
+// @param {object} transactionData - The data of the transaction.
+const logTransaction = logMiddleware('logTransaction')(async (id, tenant_id, account_id, transactionData) => {
+  let pgClient;
+  try {
+    pgClient = await pgPool.connect();
+    const result = await pgClient.query(
+      'INSERT INTO accountTransactions (id,tenant_id,account_id,transaction,executed_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id',
+      [id ?? uuidv4(), tenant_id, account_id, JSON.stringify(transactionData)]
+    );
+    return result.rows[0].id;
+  } catch (error) {
+    console.error('Error logging transaction', error);
+    throw error;
+  } finally {
+    if (pgClient) pgClient.release();
+  }
+});
+
+// Get all transactions for an account
 const getTransactions = logMiddleware('getTransactions')(async (account_id, tenant_id) => {
   let pgClient;
   try {
@@ -310,28 +464,6 @@ const getTransactions = logMiddleware('getTransactions')(async (account_id, tena
   } catch (error) {
     console.error('Error getting transactions', error);
     throw error; // Rethrow the error
-  } finally {
-    if (pgClient) pgClient.release();
-  }
-});
-
-// Log a transaction in the accountTransactions table
-// @param {string} id - The ID of the transaction. If not provided, a new UUID will be generated.
-// @param {string} tenant_id - The ID of the tenant.
-// @param {string} account_id - The ID of the account.
-// @param {object} transactionData - The data of the transaction.
-const logTransaction = logMiddleware('logTransaction')(async (id, tenant_id, account_id, transactionData) => {
-  let pgClient;
-  try {
-    pgClient = await pgPool.connect();
-    const result = await pgClient.query(
-      'INSERT INTO accountTransactions (id,tenant_id,account_id,transaction,executed_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id',
-      [id ?? uuidv4(), tenant_id, account_id, JSON.stringify(transactionData)]
-    );
-    return result.rows[0].id;
-  } catch (error) {
-    console.error('Error logging transaction', error);
-    throw error;
   } finally {
     if (pgClient) pgClient.release();
   }
@@ -366,10 +498,13 @@ async function enqueueExecutedTransaction(messageBody) {
 }
 
 module.exports = {
+  insertUser,
+  getAllUsers,
   createAccount,
   deleteAccount,
   setAccountState,
   getAllAccounts,
+  getAllAccountsByUserId,
   getAccountsByUserId,
   getTransactions,
   getAccountBalance,

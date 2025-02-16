@@ -148,7 +148,9 @@ function Execute-Requests {
             # Generate input values for this test:
             $accountId = [guid]::NewGuid().ToString()
             $toAccountId = [guid]::NewGuid().ToString()
-            $tenantId = "tenant1"
+            $userId = "43e4c8a2-4081-70d9-613a-244f8f726307" # bettyuser100@gmail.com
+            $userName = "Betty User"
+            $userEmail = "bettyuser100@gmail.com"
 
             # Define the requests with expected responses
             $requests = @(
@@ -159,62 +161,87 @@ function Execute-Requests {
                     ExpectedResponse = 'regex:"?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"?'
                 },
                 @{
-                    Name             = "Create Account"
+                    Name             = "Create User"
                     Method           = "POST"
-                    Url              = "/api/banking/account"
-                    Body             = @{ "accountId" = $accountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
-                    ExpectedResponse = "{`"message`":`"Account created successfully`",`"payload`":{`"tenant_id`":`"$tenantId`",`"account_id`":`"$accountId`",`"is_disabled`":false,`"balance`":`"0.00`"}}"
+                    Url              = "/api/banking/user"
+                    Body             = @{ "userId" = $userId; "userName" = $userName; "email" = $userEmail } | ConvertTo-Json
+                    ExpectedResponse = "{`"message`":`"User created successfully`",`"payload`":{`"user_id`":`"$userId`",`"user_name`":`"$userName`",`"email_address`":`"$userEmail`"}}"
                 },
                 @{
-                    Name             = "Create To Account"
+                    Name             = "Get All Users"
+                    Method           = "GET"
+                    Url              = "/api/banking/users"
+                    ExpectedResponse = "{`"status`":`"OK`",`"users`":[{`"user_id`":`"$userId`",`"user_name`":`"$userName`",`"email_address`":`"$userEmail`"}]}"
+                },
+                @{
+                    Name             = "Create Account #1"
                     Method           = "POST"
                     Url              = "/api/banking/account"
-                    Body             = @{ "accountId" = $toAccountId; "initialBalance" = 0; "tenantId" = $tenantId } | ConvertTo-Json
-                    ExpectedResponse = "{`"message`":`"Account created successfully`",`"payload`":{`"tenant_id`":`"$tenantId`",`"account_id`":`"$toAccountId`",`"is_disabled`":false,`"balance`":`"0.00`"}}"
+                    Body             = @{ "accountId" = $accountId; "initialBalance" = 0; "userId" = $userId } | ConvertTo-Json
+                    ExpectedResponse = "{`"message`":`"Account created successfully`",`"payload`":{`"account_id`":`"$accountId`",`"is_disabled`":false,`"balance`":`"0.00`"}}"
+                },
+                @{
+                    Name             = "Create Account #2"
+                    Method           = "POST"
+                    Url              = "/api/banking/account"
+                    Body             = @{ "accountId" = $toAccountId; "initialBalance" = 0; "userId" = $userId } | ConvertTo-Json
+                    ExpectedResponse = "{`"message`":`"Account created successfully`",`"payload`":{`"account_id`":`"$toAccountId`",`"is_disabled`":false,`"balance`":`"0.00`"}}"
                 },
                 @{
                     Name             = "Get all Accounts"
                     Method           = "GET"
-                    Url              = "/api/banking/accounts/$tenantId"
+                    Url              = "/api/banking/accounts"
                     ExpectedResponse = "{`"message`":`"Accounts retrieved successfully`",`"payload`":[{`"account_id`":`"regex:.+`",`"balance`":`"regex:\\d+\\.\\d{2}`",`"is_disabled`":false},{`"account_id`":`"regex:.+`",`"balance`":`"regex:\\d+\\.\\d{2}`",`"is_disabled`":false}]}"
+                },
+                @{
+                    Name             = "Get Accounts By User ID"
+                    Method           = "GET"
+                    Url              = "/api/banking/accounts/user?userId=$userId"
+                    ExpectedResponse = "{`"message`":`"Accounts retrieved successfully`",`"payload`":[{`"account_id`":`"$toAccountId`",`"balance`":`"0.00`",`"is_disabled`":false},{`"account_id`":`"$accountId`",`"balance`":`"0.00`",`"is_disabled`":false}]}"
+                },
+                @{
+                    Name             = "Get All Accounts Grouped By User"
+                    Method           = "GET"
+                    Url              = "/api/banking/accounts/grouped"
+                    ExpectedResponse = "{`"message`":`"Accounts grouped by user retrieved successfully`",`"payload`":[{`"user_id`":`"$userId`",`"user_name`":`"$userName`",`"accounts`":[{`"account_id`":`"$toAccountId`"},{`"account_id`":`"$accountId`"}]}]}"
                 },
                 @{
                     Name             = "Deposit"
                     Method           = "POST"
                     Url              = "/api/banking/deposit"
-                    Body             = @{ "amount" = 1000; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
-                    ExpectedResponse = "{`"message`":`"Deposit successful`",`"payload`":{`"bankingFunction`":`"deposit`",`"amount`":1000,`"account`":{`"tenant_id`":`"$tenantId`",`"account_id`":`"$accountId`",`"balance`":`"1000.00`"}}}"
+                    Body             = @{ "amount" = 1000; "accountId" = $accountId } | ConvertTo-Json
+                    ExpectedResponse = "{`"message`":`"Deposit successful`",`"payload`":{`"bankingFunction`":`"deposit`",`"amount`":1000,`"account`":{`"account_id`":`"$accountId`",`"balance`":`"1000.00`"}}}"
                 },
                 @{
                     Name             = "Withdraw"
                     Method           = "POST"
                     Url              = "/api/banking/withdraw"
-                    Body             = @{ "amount" = 500; "accountId" = $accountId; "tenantId" = $tenantId } | ConvertTo-Json
-                    ExpectedResponse = "{`"message`":`"Withdraw successful`",`"payload`":{`"bankingFunction`":`"withdraw`",`"amount`":500,`"account`":{`"tenant_id`":`"$tenantId`",`"account_id`":`"$accountId`",`"balance`":`"500.00`"}}}"
+                    Body             = @{ "amount" = 500; "accountId" = $accountId } | ConvertTo-Json
+                    ExpectedResponse = "{`"message`":`"Withdraw successful`",`"payload`":{`"bankingFunction`":`"withdraw`",`"amount`":500,`"account`":{`"account_id`":`"$accountId`",`"balance`":`"500.00`"}}}"
                 },
                 @{
                     Name             = "Transfer"
                     Method           = "POST"
                     Url              = "/api/banking/transfer"
-                    Body             = @{ "amount" = 200; "fromAccountId" = $accountId; "toAccountId" = $toAccountId; "tenantId" = $tenantId } | ConvertTo-Json
+                    Body             = @{ "amount" = 200; "fromAccountId" = $accountId; "toAccountId" = $toAccountId } | ConvertTo-Json
                     ExpectedResponse = "{`"message`":`"Transfer successful`",`"payload`":{`"bankingFunction`":`"transfer`",`"amount`":200}}"
                 },
                 @{
                     Name             = "Get Balance for From Account"
                     Method           = "GET"
-                    Url              = "/api/banking/balance/$tenantId/$accountId"
+                    Url              = "/api/banking/balance/$accountId"
                     ExpectedResponse = "{`"message`":`"Balance retrieved successfully`",`"payload`":{`"accountId`":`"$accountId`",`"balance`":`"300.00`"}}"
                 },
                 @{
                     Name             = "Get Balance for To Account"
                     Method           = "GET"
-                    Url              = "/api/banking/balance/$tenantId/$toAccountId"
+                    Url              = "/api/banking/balance/$toAccountId"
                     ExpectedResponse = "{`"message`":`"Balance retrieved successfully`",`"payload`":{`"accountId`":`"$toAccountId`",`"balance`":`"200.00`"}}"
                 },
                 @{
                     Name             = "Get Transactions for Account"
                     Method           = "GET"
-                    Url              = "/api/banking/transactions/$tenantId/$accountId"
+                    Url              = "/api/banking/transactions/$accountId"
                     ExpectedResponse = '{
                                             "message": "Transactions retrieved successfully",
                                             "payload": [
@@ -223,7 +250,8 @@ function Execute-Requests {
                                                     "executed_at": "regex:\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z",
                                                     "bankingFunction": "regex:deposit|withdraw|transfer",
                                                     "amount": "regex:\\d+",
-                                                    "tenant_id": "tenant1"
+                                                    "account_id": "regex:[0-9a-f-]+",
+                                                    "to_account_id": "regex:[0-9a-f-]+"
                                                 }
                                             ]
                                         }'
@@ -254,7 +282,7 @@ function Execute-Requests {
                     $response = Invoke-RestMethod -Method $method -Uri $url -Body $body -ContentType "application/json"
                 }
         
-                $responseJson = $response | ConvertTo-Json -Compress
+                $responseJson = $response | ConvertTo-Json -Compress -Depth 10
                 Display-Output -title $request.Name -requestJson $requestJson -responseJson $responseJson -expectedResponse $request.ExpectedResponse
             } catch {
                 Display-Output -title $request.Name -requestJson $requestJson 

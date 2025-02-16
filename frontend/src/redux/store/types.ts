@@ -83,6 +83,7 @@ export interface IOnRoute {
 export interface IAccount extends INewAccount, IOnRoute {
   is_disabled: boolean;
   user_id: string;
+  user_name?: string;
 }
 
 //==============
@@ -117,7 +118,6 @@ export interface INewTransaction {
  */
 export interface ITransaction extends INewTransaction, IOnRoute {
   executed_at: string; // Timestamp when the transaction was executed
-  from_account_id?: string; // Source account ID for received transfers
 }
 
 export interface IConnectionAndUsername {

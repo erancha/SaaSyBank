@@ -86,7 +86,7 @@ const handleRead = logMiddleware('handleRead')(async function ({ commandParams, 
   if (commandParams.accounts) {
     const dbResult = commandParams.accounts.all
       ? await dbData.getAllAccounts(process.env.TENANT_ID) /* handle pagination */
-      : await dbData.getAccountsByUserId(connectedUserId);
+      : await dbData.getAccountsByUserId(connectedUserId, process.env.TENANT_ID);
     response = { accounts: dbResult || [] };
   }
   if (commandParams.transactions) {

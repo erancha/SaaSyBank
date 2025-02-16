@@ -57,7 +57,7 @@ class Accounts extends React.Component<AccountsProps> {
 
           <div className={`accounts-list-header${isAdmin ? ' admin' : ''}`}>
             <div className='id'>Account Id</div>
-            {isAdmin && <div className='userId'>User Id</div>}
+            {isAdmin && <div className='userName'>User Name</div>}
             <div className='balance'>Balance</div>
             <div className='actions' />
           </div>
@@ -81,7 +81,7 @@ class Accounts extends React.Component<AccountsProps> {
                   >
                     {account.account_id}
                   </div>
-                  {isAdmin && <div className='userId'>{account.user_id}</div>}
+                  {isAdmin && <div className='userName'>{account.user_name}</div>}
                   <div className='balance'>{account.balance.toLocaleString()}$</div>
                   <div className='actions'>
                     {isAdmin ? (

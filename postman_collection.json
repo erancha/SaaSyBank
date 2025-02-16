@@ -63,7 +63,7 @@
 			"response": []
 		},
 		{
-			"name": "Create Account",
+			"name": "Create User",
 			"request": {
 				"method": "POST",
 				"header": [
@@ -74,7 +74,84 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\"accountId\": \"d40a84fd-0661-4456-a4d8-a62cc619c628\", \"initialBalance\": 0, \"tenantId\": \"tenant1\"}"
+					"raw": "{\"userId\": \"{{userId}}\", \"userName\": \"Betty User\", \"email\": \"bettyuser100@gmail.com\"}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/user",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"user"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get All Users",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/users",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"users"
+					]
+				}
+			},
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has correct structure\", function () {",
+							"    const response = pm.response.json();",
+							"    pm.expect(response).to.be.an('object');",
+							"    pm.expect(response.status).to.equal('OK');",
+							"    pm.expect(response.users).to.be.an('array');",
+							"});",
+							"",
+							"pm.test(\"Users array contains required fields\", function () {",
+							"    const response = pm.response.json();",
+							"    if (response.users.length > 0) {",
+							"        const user = response.users[0];",
+							"        pm.expect(user).to.have.property('user_id');",
+							"        pm.expect(user).to.have.property('user_name');",
+							"        pm.expect(user).to.have.property('email_address');",
+							"    }",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"response": []
+		},
+		{
+			"name": "Create Account #1",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"accountId\": \"{{accountId}}\", \"initialBalance\": 0, \"userId\": \"{{userId}}\"}"
 				},
 				"url": {
 					"raw": "{{baseUrl}}/api/banking/account",
@@ -85,27 +162,6 @@
 						"api",
 						"banking",
 						"account"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Get Balance",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{baseUrl}}/api/banking/balance/tenant1/d40a84fd-0661-4456-a4d8-a62cc619c628",
-					"host": [
-						"{{baseUrl}}"
-					],
-					"path": [
-						"api",
-						"banking",
-						"balance",
-						"tenant1",
-						"d40a84fd-0661-4456-a4d8-a62cc619c628"
 					]
 				}
 			},
@@ -123,7 +179,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\"amount\": 1000, \"accountId\": \"d40a84fd-0661-4456-a4d8-a62cc619c628\", \"tenantId\": \"tenant1\"}"
+					"raw": "{\"amount\": 1000, \"accountId\": \"{{accountId}}\"}"
 				},
 				"url": {
 					"raw": "{{baseUrl}}/api/banking/deposit",
@@ -151,7 +207,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\"amount\": 500, \"accountId\": \"d40a84fd-0661-4456-a4d8-a62cc619c628\", \"tenantId\": \"tenant1\"}"
+					"raw": "{\"amount\": 500, \"accountId\": \"{{accountId}}\"}"
 				},
 				"url": {
 					"raw": "{{baseUrl}}/api/banking/withdraw",
@@ -162,6 +218,34 @@
 						"api",
 						"banking",
 						"withdraw"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Create Account #2",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"accountId\": \"{{toAccountId}}\", \"initialBalance\": 0, \"userId\": \"{{userId}}\"}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/account",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"account"
 					]
 				}
 			},
@@ -179,7 +263,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\"amount\": 200, \"fromAccountId\": \"d40a84fd-0661-4456-a4d8-a62cc619c628\", \"toAccountId\": \"d19e8953-5ff3-4b74-8978-4c7a211babfc\", \"tenantId\": \"tenant1\"}"
+					"raw": "{\"amount\": 200, \"fromAccountId\": \"{{accountId}}\", \"toAccountId\": \"4d42a3ea-1d57-4a00-983d-c88ec4de1930\"}"
 				},
 				"url": {
 					"raw": "{{baseUrl}}/api/banking/transfer",
@@ -190,6 +274,112 @@
 						"api",
 						"banking",
 						"transfer"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Balance",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/balance/{{accountId}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"balance",
+						"{{accountId}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get All Accounts",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/accounts",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"accounts"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get User Accounts",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/accounts/user?userId={{userId}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"accounts",
+						"user"
+					],
+					"query": [
+						{
+							"key": "userId",
+							"value": "{{userId}}",
+							"description": "ID of the user to get accounts for"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Accounts Grouped By User",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/accounts/grouped",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"accounts",
+						"grouped"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Transactions for Account",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/banking/transactions/{{accountId}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"banking",
+						"transactions",
+						"{{accountId}}"
 					]
 				}
 			},

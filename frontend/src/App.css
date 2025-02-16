@@ -396,9 +396,6 @@ body {
   flex-direction: column;
 }
 
-.account-row-container.input .id {
-}
-
 .account-row-container.input > div *:not(span) {
   border: 1px solid #ddd;
   border-radius: 15px;
@@ -495,7 +492,7 @@ body {
 }
 
 .account-row-container.onroute,
-.transaction-row-container.onroute { /* on route from the frontend to the backend for persistance into the database */
+.transaction-row-container.onroute { 
   color: darkred;
   > div,
   > div > p,
@@ -666,6 +663,50 @@ body {
     margin: 1rem 0 0 0.5rem;
     scale: 120%;
   }
+}
+
+.account-selector {
+  position: relative;
+}
+
+.account-selector input {
+  width: 100%;
+  padding: 8px;
+  border-radius: 10px;
+  background-color: white;
+  font-size: 0.8rem;
+  transition: background-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.account-selector .dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.account-selector .user-item {
+  padding: 8px;
+}
+
+.account-selector .user-name {
+  font-weight: bold;
+}
+
+.account-selector .account-item {
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.account-selector .account-item.selected {
+  background-color: #f0f0f0;
 }
 
 /* Responsive Design */

@@ -13,6 +13,11 @@ exports.handler = async (event) => {
     },
   };
 
+  // Define temporary user ID for testing
+  const TEMP_USER_ID = '43e4c8a2-4081-70d9-613a-244f8f726307';
+  const TEMP_USER_NAME = 'Betty User';
+  const TEMP_USER_EMAIL = 'bettyuser100@gmail.com';
+
   const client = new Client(clientParams);
   let dbClient;
 
@@ -58,6 +63,7 @@ exports.handler = async (event) => {
         const dropTablesQuery = `
         DROP TABLE IF EXISTS accounts;
         DROP TABLE IF EXISTS accountTransactions;
+        DROP TABLE IF EXISTS users;
       `;
         await dbClient.query(dropTablesQuery);
         console.log('Existing tables dropped.');
@@ -67,11 +73,22 @@ exports.handler = async (event) => {
       const createTableQueries = `
         CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+        CREATE TABLE IF NOT EXISTS users (
+            user_id TEXT PRIMARY KEY,
+            user_name TEXT NOT NULL,
+            email_address TEXT NOT NULL UNIQUE,
+            tenant_id TEXT NOT NULL,
+            is_disabled BOOLEAN DEFAULT false,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
         CREATE TABLE IF NOT EXISTS accounts (
             id SERIAL,
             tenant_id TEXT NOT NULL,
             account_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
+            -- REFERENCES constraint creates a foreign key that ensures user_id exists in users table
+            -- This enforces referential integrity - you cannot create an account for a non-existent user
+            user_id TEXT NOT NULL REFERENCES users(user_id),
             is_disabled BOOLEAN NULL,
             balance DECIMAL(10, 2) NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -91,6 +108,14 @@ exports.handler = async (event) => {
       `;
       await dbClient.query(createTableQueries);
 
+      // Insert the temporary user
+      const insertUserQuery = `
+        INSERT INTO users (user_id, user_name, email_address, tenant_id) 
+        VALUES ('${TEMP_USER_ID}', '${TEMP_USER_NAME}', '${TEMP_USER_EMAIL}', '${process.env.TENANT_ID}')
+        ON CONFLICT (user_id) DO NOTHING;
+      `;
+      await dbClient.query(insertUserQuery);
+
       // Check if the index exists and create it if it does not
       const indexCheckQuery = `
         DO $$
@@ -106,14 +131,13 @@ exports.handler = async (event) => {
 
     const TEMP_TENANT_ID = 'temp-tenant';
     const TEMP_ACCOUNT_ID = 'account123';
-    const TEMP_USER_ID = '43e4c8a2-4081-70d9-613a-244f8f726307';
 
     // Add a record
-    const addRecordQuery = `
+    const addAccountRecordQuery = `
       INSERT INTO accounts (tenant_id, account_id, user_id, balance) 
       VALUES ($1, $2, $3, $4);
     `;
-    await dbClient.query(addRecordQuery, [TEMP_TENANT_ID, TEMP_ACCOUNT_ID, TEMP_USER_ID, 100.0]);
+    await dbClient.query(addAccountRecordQuery, [TEMP_TENANT_ID, TEMP_ACCOUNT_ID, TEMP_USER_ID, 100.0]);
 
     // Display records count
     const countQuery1 = 'SELECT COUNT(*) FROM accounts;';

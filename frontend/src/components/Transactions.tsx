@@ -6,6 +6,7 @@ import { setWSConnectedAction } from 'redux/websockets/actions';
 import { prepareCreateTransactionCommandAction, addTransactionAction } from '../redux/transactions/actions';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { AccountSelector } from './AccountSelector';
 
 // Type-safe field names for ITransaction
 type TransactionField = keyof Pick<ITransaction, 'bankingFunction' | 'amount' | 'to_account_id'>;
@@ -177,18 +178,18 @@ class Transactions extends React.Component<AccountTransactionsProps, { emptyTran
           {isExecuted
             ? `${
                 this.props.currentAccount?.account_id === transaction.to_account_id
-                  ? `<==| ${transaction.from_account_id}`
+                  ? `<==| ${transaction.account_id}`
                   : transaction.to_account_id
                   ? `|==> ${transaction.to_account_id}`
                   : ''
               }`
             : transaction.bankingFunction === BankingFunctionType.Transfer && (
-                <input
-                  type='text'
+                <AccountSelector
                   value={transaction.to_account_id ?? ''}
-                  onChange={(e) => (!isExecuted ? this.handleEmptyTransactionChange('to_account_id' as TransactionField, e.target.value) : undefined)}
+                  onChange={(value: string) => (!isExecuted ? this.handleEmptyTransactionChange('to_account_id' as TransactionField, value) : undefined)}
                   readOnly={isExecuted}
-                  placeholder={'Enter target account'}
+                  placeholder={'Target account ...'}
+                  excludeAccountId={this.props.currentAccount?.account_id}
                 />
               )}
         </div>

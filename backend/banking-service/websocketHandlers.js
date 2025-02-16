@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const { CURRENT_TASK_ID } = require('./constants');
 const { handleCommand, handleRead } = require('./commandsHandlers');
 const { getRedisClient, getPublisherClient, getSubscriberClient } = require('./redisClient');
+const dbData = require('./dbData');
 
 // Refer to ./websockets-ecs.png
 // -----------------------------
@@ -30,6 +31,15 @@ const onWebsocketConnect = async (socket, request) => {
 
   const currentUserId = decodedJwt.sub ?? decodedJwt.identities.userId;
   const currentUserName = decodedJwt.name;
+  const currentUserEmail = decodedJwt.email;
+
+  // Insert or update user in the database
+  try {
+    await dbData.insertUser(currentUserId, currentUserName, currentUserEmail, process.env.TENANT_ID);
+  } catch (error) {
+    console.error('Error inserting/updating user:', error);
+    // Continue with connection as this is not critical
+  }
 
   socket.userId = currentUserId;
   connectedClients.set(currentUserId, socket);

@@ -14,7 +14,7 @@ if (-not $apiUrl) {
       exit 1
    }
    else {
-      $apiUrl = "$loadBalancerUrl/api/banking/ws" # TODO
+      $apiUrl = "$loadBalancerUrl/api/banking" # TODO
    }
 }
 
