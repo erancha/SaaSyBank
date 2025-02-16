@@ -53,7 +53,7 @@ class AppComponent extends React.Component<AppProps & { auth: AuthContextProps }
           <div className='header-container'>
             <div className='header-title-container'>
               <div className='header-title' title='AWS/React/WebSockets-based betting application.'>
-                SasSyBank
+                SaaSyBank
               </div>
               <img src='/favicon.ico' alt='Logo' width='32' height='32' />
               <span className='build'>{appConfigData.BUILD}</span>

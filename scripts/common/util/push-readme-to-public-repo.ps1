@@ -1,12 +1,12 @@
-$sourceFile = ".\SasSyBank-private\README.MD"
-$targetFolder = ".\SasSyBank" # SasSyBank-public
+$sourceFile = ".\SaaSyBank-private\README.MD"
+$targetFolder = ".\SaaSyBank" # SaaSyBank-public
 $targetFile = "$targetFolder\README.MD"
-$repositoryUrl = "https://github.com/erancha/SasSyBank.git"
+$repositoryUrl = "https://github.com/erancha/SaaSyBank.git"
 $commitMessage = "Add README.md via hardlink"
 
 Set-Location ..\..\..\..
 
-# Create a new subfolder 'SasSyBank'
+# Create a new subfolder 'SaaSyBank'
 # New-Item -ItemType Directory -Path $targetFolder -Force
 
 # Create a hardlink from the target folder to the source README.md
@@ -16,7 +16,7 @@ if (Test-Path $targetFile) {
 }
 cmd /c mklink /H $targetFile $sourceFile
 
-# Navigate to the 'SasSyBank' directory
+# Navigate to the 'SaaSyBank' directory
 Set-Location -Path $targetFolder
 
 # git init
@@ -26,4 +26,4 @@ git commit -m $commitMessage
 # git remote add origin $repositoryUrl
 git push -u origin main
 
-Set-Location ..\SasSyBank-private\scripts\common\util\
+Set-Location ..\SaaSyBank-private\scripts\common\util\
