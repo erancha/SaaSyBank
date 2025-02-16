@@ -16,12 +16,14 @@ httpServer.listen(SERVER_PORT, () => console.log(`Banking service is running on 
 app.use(express.json());
 
 // Enable CORS for all routes
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  })
+);
 
 const websocketServer = new WebSocket.Server({ server: httpServer });
 websocketServer.on('connection', onWebsocketConnect);
@@ -89,7 +91,7 @@ bankingRouter.post('/user', async (req, res) => {
   try {
     const result = await dbData.insertUser(userId, userName, email, process.env.TENANT_ID);
     res.status(201).json({
-      message: 'User created successfully',
+      message: `User ${result.operation} successfully`,
       payload: result,
     });
   } catch (error) {

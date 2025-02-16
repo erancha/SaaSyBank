@@ -165,7 +165,7 @@ function Execute-Requests {
                     Method           = "POST"
                     Url              = "/api/banking/user"
                     Body             = @{ "userId" = $userId; "userName" = $userName; "email" = $userEmail } | ConvertTo-Json
-                    ExpectedResponse = "{`"message`":`"User created successfully`",`"payload`":{`"user_id`":`"$userId`",`"user_name`":`"$userName`",`"email_address`":`"$userEmail`"}}"
+                    ExpectedResponse = "{`"message`":`"User updated successfully`",`"payload`":{`"user_id`":`"$userId`",`"user_name`":`"$userName`",`"email_address`":`"$userEmail`"}}"
                 },
                 @{
                     Name             = "Get All Users"

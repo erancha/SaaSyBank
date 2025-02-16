@@ -13,13 +13,27 @@ const pgPool = new Pool({
   },
 });
 
-// Middleware for logging parameters
+// Middleware for logging parameters and elapsed time
 const logMiddleware = (name) => (fn) => {
   const wrappedFunction = async function (...args) {
+    const startTime = Date.now();
+
     if (process.env.ENABLE_ENHANCED_LOGGING.toLowerCase() === 'true') {
-      console.log(`Calling function '${name}' with parameters: ${JSON.stringify(args)}`);
+      console.log(`Starting function '${name}' with parameters: ${JSON.stringify(args)}`);
     }
-    return await fn(...args);
+
+    try {
+      const result = await fn(...args);
+
+      const elapsedTime = Date.now() - startTime;
+      console.log(`Function '${name}' completed in ${elapsedTime.toLocaleString()} ms`);
+
+      return result;
+    } catch (error) {
+      const elapsedTime = Date.now() - startTime;
+      console.error(`Function '${name}' failed after ${elapsedTime.toLocaleString()} ms:`, error);
+      throw error;
+    }
   };
   wrappedFunction.name = name;
   return wrappedFunction;
@@ -45,12 +59,21 @@ const insertUser = logMiddleware('insertUser')(async (userId, userName, email, t
   let pgClient;
   try {
     pgClient = await pgPool.connect();
+    // This query attempts to insert a user, but if the user_id already exists, it updates instead.
+    // It uses PostgreSQL's xmax system column which is 0 for new rows to detect if the row was 
+    // inserted (created) or updated. The operation is returned along with the user data.
     const result = await pgClient.query(
-      `INSERT INTO users (user_id, user_name, email_address, tenant_id) 
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (user_id) DO UPDATE 
-       SET user_name = $2, email_address = $3, tenant_id = $4
-       RETURNING user_id, user_name, email_address, tenant_id`,
+      `WITH operation AS (
+        INSERT INTO users (user_id, user_name, email_address, tenant_id) 
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (user_id) DO UPDATE 
+        SET user_name = $2, email_address = $3, tenant_id = $4
+        RETURNING user_id, user_name, email_address, tenant_id,
+          (xmax = 0) as is_insert
+      )
+      SELECT *, 
+        CASE WHEN is_insert THEN 'created' ELSE 'updated' END as operation
+      FROM operation`,
       [userId, userName, email, tenantId]
     );
     return result.rows[0];
