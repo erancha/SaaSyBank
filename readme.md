@@ -10,8 +10,8 @@ It features a user-friendly design with a mobile-first approach and robust monit
 
 User authentication is securely managed through Google.
 
-## Demo
-https://github.com/erancha/SaaSyBank/blob/main/SaaSyBank%20demo.mp4
+### Recorded Demo
+https://drive.google.com/file/d/1zWGpio3kZrHh01X9zIONAgY1aQ8zyXsm/view?usp=drive_link
 
 # Table Of Content
 
