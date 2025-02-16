@@ -1,16 +1,17 @@
 # Preface
 
-**SaaSyBank** serves as a demonstration for a banking application that enables users to create accounts and engage in various banking transactions.
+**SaaSyBank** showcases a banking application that allows users to create accounts and perform various banking transactions.
 
-The application includes two distinct user roles: Bankers, who can activate or deactivate accounts, and Users, who have the ability to deposit, withdraw, and transfer money between accounts.
+The application supports two user roles: Users, who can create accounts, deposit, withdraw, and transfer money between accounts, and Bankers, who can activate or deactivate accounts.
 
-Built with scalability in mind, the app leverages serverless computing and storage, complemented by global content distribution through CloudFront.
+Designed with scalability in mind, the application employs serverless computing and storage, alongside global content distribution via CloudFront.
 
-It features a user-friendly design with a mobile-first approach and robust monitoring capabilities via AWS CloudWatch. The app is developed using AWS services, React, and WebSockets to facilitate real-time updates.
+The application features an intuitive mobile-first design and robust monitoring capabilities through AWS CloudWatch. The app is developed using AWS, React, and WebSockets to provide real-time updates.
 
-User authentication is securely managed through Google.
+User authentication is securely handled through Google.
 
 ### Recorded Demo
+
 https://drive.google.com/file/d/1zWGpio3kZrHh01X9zIONAgY1aQ8zyXsm/view?usp=drive_link
 
 # Table Of Content
